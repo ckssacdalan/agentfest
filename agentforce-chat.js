@@ -135,6 +135,95 @@
     return Number.isFinite(parsed) ? parsed : undefined;
   }
 
+  function parseBudgetAmount(value, hasK) {
+    const parsed = Number(String(value || "").replace(/[$,]/g, ""));
+    if (!Number.isFinite(parsed)) return null;
+    return hasK || parsed < 100 ? parsed * 1000 : parsed;
+  }
+
+  function formatCurrency(value) {
+    return `$${Math.round(value).toLocaleString()}`;
+  }
+
+  function extractRecommendationPreference(text) {
+    const normalized = String(text || "").toLowerCase();
+    const preferencePatterns = [
+      [/engagement|proposal/, "Engagement ring"],
+      [/anniversary/, "Anniversary ring"],
+      [/wedding/, "Wedding ring"],
+      [/solitaire/, "Solitaire ring"],
+      [/halo/, "Halo ring"],
+      [/eternity/, "Eternity ring"],
+      [/gold/, "Gold ring"],
+      [/platinum/, "Platinum ring"],
+      [/diamond/, "Diamond ring"]
+    ];
+
+    return preferencePatterns.find(([pattern]) => pattern.test(normalized))?.[1] || "";
+  }
+
+  function extractRecommendationBudget(text) {
+    const normalized = String(text || "").toLowerCase();
+    const rangeMatch = normalized.match(/\$?\s*(\d+(?:\.\d+)?)\s*(k)?\s*(?:-|to|and)\s*\$?\s*(\d+(?:\.\d+)?)\s*(k)?/i);
+    if (rangeMatch) {
+      const hasK = Boolean(rangeMatch[2] || rangeMatch[4]);
+      const first = parseBudgetAmount(rangeMatch[1], hasK);
+      const second = parseBudgetAmount(rangeMatch[3], hasK);
+      if (first !== null && second !== null) {
+        return `${formatCurrency(Math.min(first, second))} - ${formatCurrency(Math.max(first, second))}`;
+      }
+    }
+
+    const amountMatch = normalized.match(/\$?\s*(\d+(?:\.\d+)?)\s*(k)?/i);
+    if (!amountMatch) return "";
+
+    const amount = parseBudgetAmount(amountMatch[1], Boolean(amountMatch[2]));
+    if (amount === null) return "";
+
+    if (/\b(around|about|near|approximately|roughly)\b/.test(normalized)) {
+      return `~${formatCurrency(amount)}`;
+    }
+
+    if (/\b(under|below|less than|or less|no more than|max|maximum|up to)\b/.test(normalized)) {
+      return `↓ ${formatCurrency(amount)}`;
+    }
+
+    return formatCurrency(amount);
+  }
+
+  function captureRecommendationRequestContext(messageText) {
+    const text = String(messageText || "").trim();
+    if (hasLuminaListenerKeyword(text) || /\badded to your cart\b/i.test(text)) return;
+
+    const preference = extractRecommendationPreference(text);
+    const budget = extractRecommendationBudget(text);
+    if (!preference && !budget) return;
+
+    let existing = {};
+    try {
+      existing = JSON.parse(sessionStorage.getItem("lumina_agentforce_recommendation_context") || localStorage.getItem("lumina_agentforce_recommendation_context") || "{}");
+    } catch (error) {
+      existing = {};
+    }
+
+    const mergedPreference = preference || existing.preference || "Ring";
+    const mergedBudget = budget || existing.budget || "";
+
+    const context = {
+      preference: mergedPreference,
+      budget: mergedBudget,
+      label: [mergedPreference, mergedBudget].filter(Boolean).join(" | "),
+      capturedAt: Date.now()
+    };
+
+    try {
+      sessionStorage.setItem("lumina_agentforce_recommendation_context", JSON.stringify(context));
+      localStorage.setItem("lumina_agentforce_recommendation_context", JSON.stringify(context));
+    } catch (error) {
+      // Storage can be unavailable in embedded/private contexts; routing still works without this label.
+    }
+  }
+
   function addDetails(detailsByCode, code, details) {
     const normalizedCode = String(code || "").trim();
     if (!normalizedCode) return;
@@ -207,6 +296,72 @@
     }
 
     return {
+      productDetailsByCode,
+      serviceDetailsByCode
+    };
+  }
+
+  function getLabelValue(blockText, label) {
+    const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = blockText.match(new RegExp(`(?:\\*\\*)?${escapedLabel}(?:\\*\\*)?:\\s*(.+)$`, "im"));
+    return match?.[1]?.trim() || "";
+  }
+
+  function parseCartSummaryFallback(messageText) {
+    const productDetailsByCode = {};
+    const serviceDetailsByCode = {};
+    const ringCodes = [];
+    const serviceCodes = [];
+    const text = String(messageText || "");
+
+    if (!/\badded to your cart\b/i.test(text)) {
+      return {
+        ringCodes,
+        serviceCodes,
+        productDetailsByCode,
+        serviceDetailsByCode
+      };
+    }
+
+    text
+      .split(/\n\s*\n/)
+      .map(block => block.trim())
+      .filter(Boolean)
+      .forEach(block => {
+        const codeText = getLabelValue(block, "Codes") || getLabelValue(block, "Code");
+        const codes = extractCodes(codeText);
+        if (codes.length === 0) return;
+
+        const lines = block.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+        const titleLine = lines.find(line =>
+          /:$/.test(line) &&
+          !/^(ring price|engraving service|engraving price|estimated total|codes?)\s*:/i.test(line)
+        ) || "";
+        const productName = titleLine.replace(/:$/, "").replace(/\s+with engraving$/i, "").trim();
+        const ringPrice = parsePrice(getLabelValue(block, "Ring price"));
+        const engravingName = getLabelValue(block, "Engraving service");
+        const engravingPrice = parsePrice(getLabelValue(block, "Engraving price"));
+        const ringCode = codes[0];
+
+        ringCodes.push(ringCode);
+        addDetails(productDetailsByCode, ringCode, {
+          name: productName || undefined,
+          price: ringPrice
+        });
+
+        if (codes.length > 1 && engravingName) {
+          const serviceCode = codes[codes.length - 1];
+          serviceCodes.push(serviceCode);
+          addDetails(serviceDetailsByCode, serviceCode, {
+            name: engravingName,
+            price: engravingPrice
+          });
+        }
+      });
+
+    return {
+      ringCodes,
+      serviceCodes,
       productDetailsByCode,
       serviceDetailsByCode
     };
@@ -337,6 +492,8 @@
   }
 
   function hasLuminaListenerKeyword(messageText) {
+    if (/\badded to your cart\b/i.test(String(messageText || ""))) return true;
+
     return String(messageText || "")
       .split(/\r?\n/)
       .some(line =>
@@ -354,8 +511,11 @@
     const serviceCodes = [];
     const payloadItems = parseCartPayloadLines(messageText);
     const { productDetailsByCode, serviceDetailsByCode } = extractCartDetails(messageText);
+    const summaryFallback = cartLines.length === 0 && payloadItems.length === 0
+      ? parseCartSummaryFallback(messageText)
+      : null;
 
-    if (cartLines.length === 0 && payloadItems.length === 0) return false;
+    if (cartLines.length === 0 && payloadItems.length === 0 && !summaryFallback?.ringCodes.length) return false;
 
     cartLines.forEach(line => {
       const codes = extractCodes(line);
@@ -387,6 +547,17 @@
         addDetails(serviceDetailsByCode, item.serviceCode, item.serviceDetails);
       }
     });
+
+    if (summaryFallback) {
+      ringCodes.push(...summaryFallback.ringCodes);
+      serviceCodes.push(...summaryFallback.serviceCodes);
+      Object.entries(summaryFallback.productDetailsByCode).forEach(([code, details]) => {
+        addDetails(productDetailsByCode, code, details);
+      });
+      Object.entries(summaryFallback.serviceDetailsByCode).forEach(([code, details]) => {
+        addDetails(serviceDetailsByCode, code, details);
+      });
+    }
 
     if (ringCodes.length === 0 && serviceCodes.length === 0) return false;
 
@@ -446,6 +617,10 @@
   function handleAgentforceMessage(eventDetail) {
     const messageText = getAgentforceMessageText(eventDetail);
     if (!messageText) return;
+
+    if (!isAgentforceResponse(eventDetail)) {
+      captureRecommendationRequestContext(messageText);
+    }
 
     if (!isAgentforceResponse(eventDetail) && !hasLuminaListenerKeyword(messageText)) return;
 

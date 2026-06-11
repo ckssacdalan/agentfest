@@ -467,6 +467,26 @@ function getAdjustedPrice(product, metal) {
   return product.price;
 }
 
+function getAgentforceRecommendationLabel() {
+  const storageKeys = [
+    "lumina_agentforce_recommendation_context"
+  ];
+
+  for (const key of storageKeys) {
+    const stored = sessionStorage.getItem(key) || localStorage.getItem(key);
+    if (!stored) continue;
+
+    try {
+      const parsed = JSON.parse(stored);
+      if (parsed?.label) return parsed.label;
+    } catch (error) {
+      // Ignore malformed stored context and fall back to the default label.
+    }
+  }
+
+  return "Recommended rings";
+}
+
 // --- SPA Hash Router ---
 function handleRouting() {
   const hash = window.location.hash;
@@ -551,6 +571,7 @@ function renderRecommendedProducts(recommendedProducts) {
   const primaryProduct = recommendedProducts[0];
   const initials = getInitials(primaryProduct.name);
   const totalPrice = recommendedProducts.reduce((sum, product) => sum + getAdjustedPrice(product, product.name.toLowerCase().includes("platinum") ? "Platinum" : "18K Yellow Gold"), 0);
+  const recommendationLabel = getAgentforceRecommendationLabel();
 
   container.innerHTML = `
     <div class="breadcrumbs container">
@@ -580,8 +601,7 @@ function renderRecommendedProducts(recommendedProducts) {
       <div class="recommended-info">
         <span class="detail-brand-header">AGENTFORCE SELECTION</span>
         <h1 class="detail-product-title">Recommended Rings</h1>
-        <div class="detail-product-price">From $${Math.min(...recommendedProducts.map(product => product.price)).toLocaleString()}</div>
-        <p class="recommended-copy">A curated set of rings selected for your request. Review each option, then open the ring you want to configure size and metal.</p>
+        <div class="detail-product-price">${recommendationLabel}</div>
 
         <hr class="detail-divider">
 
