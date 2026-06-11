@@ -85,6 +85,15 @@
       .find(line => line.trim().toLowerCase().startsWith(normalizedPrefix)) || "";
   }
 
+  function getListenerLines(messageText, listenerPrefixes) {
+    const normalizedPrefixes = listenerPrefixes.map(prefix => prefix.toLowerCase());
+
+    return String(messageText || "")
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .filter(line => normalizedPrefixes.some(prefix => line.toLowerCase().startsWith(prefix)));
+  }
+
   function parseHumanRouteSentence(messageText) {
     const recommendedRingsLine = getListenerLine(messageText, "Showing recommended rings:");
     if (recommendedRingsLine) {
@@ -161,18 +170,38 @@
   }
 
   function routeAgentCartFromMessage(messageText) {
-    const addedWithEngravingLine = getListenerLine(messageText, "Added ring with engraving to cart:");
-    const addedRingLine = getListenerLine(messageText, "Added ring to cart:");
-    const cartLine = addedWithEngravingLine || addedRingLine;
-    if (!cartLine) return false;
+    const cartLines = getListenerLines(messageText, [
+      "Added ring with engraving to cart:",
+      "Added rings with engraving to cart:",
+      "Added ring to cart:",
+      "Added rings to cart:"
+    ]);
 
-    const codes = extractCodes(cartLine);
-    if (codes.length === 0) return false;
+    if (cartLines.length === 0) return false;
 
-    const ringCodes = codes.filter(code => /^prod-/i.test(code));
-    const serviceCodes = addedWithEngravingLine
-      ? codes.filter(code => !/^prod-/i.test(code))
-      : [];
+    const ringCodes = [];
+    const serviceCodes = [];
+
+    cartLines.forEach(line => {
+      const codes = extractCodes(line);
+      const lineRingCodes = codes.filter(code => /^prod-/i.test(code));
+      const lineHasEngraving = /^added rings? with engraving to cart:/i.test(line);
+      const lineServiceCodes = lineHasEngraving
+        ? codes.filter(code => !/^prod-/i.test(code))
+        : [];
+
+      ringCodes.push(...lineRingCodes);
+
+      if (lineHasEngraving && lineServiceCodes.length > 0) {
+        if (lineServiceCodes.length === 1 && lineRingCodes.length > 1) {
+          lineRingCodes.forEach(() => serviceCodes.push(lineServiceCodes[0]));
+        } else {
+          serviceCodes.push(...lineServiceCodes);
+        }
+      }
+    });
+
+    if (ringCodes.length === 0 && serviceCodes.length === 0) return false;
 
     const storefront = window.LuminaStorefront;
     if (!storefront || typeof storefront.addAgentforceCartItems !== "function") {
