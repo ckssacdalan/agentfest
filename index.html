@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lumina Atelier | Fine Luxury Jewelry</title>
+  <meta name="description" content="Discover premium handcrafted rings, necklaces, earrings, and bracelets at Lumina Atelier. Fully responsive demo with integrated Agentforce chat support.">
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+  <!-- Salesforce Beacon Script -->
+  <script type="text/javascript" async="" src="https://cdn.c360a.salesforce.com/beacon/c360a/36f000dc-c237-4c8b-a5c8-f75b1581d958/scripts/c360a.min.js"></script>
+</head>
+<body>
+
+  <!-- --- TOAST CONTAINER FOR DYNAMIC EVENTS --- -->
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+  <!-- --- HEADER & NAVBAR --- -->
+  <header class="header">
+    <div class="container navbar">
+      <a href="#" class="nav-logo" id="logoLink">
+        LUMINA
+        <span>Atelier</span>
+      </a>
+      
+      <nav aria-label="Main Navigation">
+        <ul class="nav-links">
+          <li><a href="#carousel-section" id="navCatalog">Catalog</a></li>
+          <li><a href="#highlight-section" id="navHighlights">Highlights</a></li>
+        </ul>
+      </nav>
+
+      <div class="nav-actions">
+        <button id="btnAdminOpen" class="btn-admin" aria-label="Open Catalog Admin Panel">
+          Admin <span class="hide-mobile">Panel</span>
+        </button>
+        <button id="btnCart" class="icon-btn" aria-label="View Shopping Bag">
+          <!-- Premium Minimalist Bag SVG -->
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <path d="M16 10a4 4 0 0 1-8 0"></path>
+          </svg>
+          <span class="cart-count" style="display: none;">0</span>
+        </button>
+        <button id="btnMobileMenu" class="mobile-menu-btn" aria-label="Toggle Navigation Menu">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hamburger-icon">
+            <line x1="3" y1="12" x2="21" y2="12" class="line-mid"></line>
+            <line x1="3" y1="6" x2="21" y2="6" class="line-top"></line>
+            <line x1="3" y1="18" x2="21" y2="18" class="line-bot"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <!-- Mobile Navigation Drawer / Dropdown -->
+    <div id="mobileNavMenu" class="mobile-nav-menu">
+      <nav aria-label="Mobile Navigation">
+        <ul class="mobile-nav-links">
+          <li><a href="#carousel-section" id="mobNavCatalog">Catalog</a></li>
+          <li><a href="#highlight-section" id="mobNavHighlights">Highlights</a></li>
+          <li><a href="#" id="mobNavAdmin" class="mob-admin-link">Admin Panel</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <!-- --- HERO BRAND BANNER --- -->
+  <section class="hero" id="heroBanner">
+    <div class="container">
+      <span class="hero-subtitle">Handcrafted Fine Jewelry</span>
+      <h1 class="hero-title">Timeless elegance, crafted for your moments.</h1>
+      <p class="hero-desc">Experience a new era of shopping at Lumina Atelier. Speak to our interactive Agentforce expert below to find and customize your perfect accessory in real-time.</p>
+      <a href="#carousel-section" class="btn-primary" id="btnHeroExplore">Explore Collection</a>
+    </div>
+  </section>
+
+  <!-- --- TOP HORIZONTAL SCROLLING PRODUCT CAROUSEL --- -->
+  <section class="carousel-section" id="carousel-section">
+    <div class="container">
+      <div class="section-header">
+        <div>
+          <span class="hero-subtitle" style="font-size:0.75rem; letter-spacing:0.15em;">The Collection</span>
+          <h2 class="section-title">Explore Catalog</h2>
+        </div>
+        <div class="carousel-controls">
+          <button id="carouselPrev" class="carousel-arrow" aria-label="Scroll products left" title="Scroll Left">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          </button>
+          <button id="carouselNext" class="carousel-arrow" aria-label="Scroll products right" title="Scroll Right">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+          </button>
+        </div>
+      </div>
+      
+      <!-- Loaded dynamically via JavaScript -->
+      <div id="carouselContainer" class="carousel-container"></div>
+    </div>
+  </section>
+
+  <!-- --- HIGHLIGHTED PRODUCTS SECTION --- -->
+  <section class="highlight-section" id="highlight-section">
+    <div class="container">
+      <span class="hero-subtitle" style="font-size:0.75rem; letter-spacing:0.15em; text-align:left; display:block;">Our Favorites</span>
+      <h2 class="section-title">Featured Highlights</h2>
+      
+      <!-- Loaded dynamically via JavaScript -->
+      <div id="highlightGrid" class="highlight-grid"></div>
+    </div>
+  </section>
+
+  <!-- --- PRODUCT DETAIL VIEW SECTION (SPA) --- -->
+  <section id="productDetailSection" class="product-detail-section" style="display: none;">
+    <!-- Loaded dynamically via JavaScript -->
+  </section>
+
+  <!-- --- FOOTER --- -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <h4>LUMINA ATELIER</h4>
+          <p>Handcrafting the world's most exquisite fine jewelry, rings, and gems. Celebrating love and legacy since 1998.</p>
+        </div>
+        <div class="footer-col">
+          <h5>Collections</h5>
+          <ul>
+            <li><a href="#">Engagement Rings</a></li>
+            <li><a href="#">Pendant Necklaces</a></li>
+            <li><a href="#">Luxury Earrings</a></li>
+            <li><a href="#">Tennis Bracelets</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h5>Atelier Info</h5>
+          <ul>
+            <li><a href="#">About Lumina</a></li>
+            <li><a href="#">Our Craftsmanship</a></li>
+            <li><a href="#">Sourcing & Ethics</a></li>
+            <li><a href="#">Showroom Locations</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h5>Customer Care</h5>
+          <ul>
+            <li><a href="#">Book a Consultation</a></li>
+            <li><a href="#">Ring Size Guide</a></li>
+            <li><a href="#">Shipping & Returns</a></li>
+            <li><a href="#">Contact Specialist</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>&copy; 2026 Lumina Atelier. All rights reserved.</p>
+        <p>Dynamic Agentforce Integration Prototype</p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- --- CART DRAWER SLIDEOUT --- -->
+  <div id="cartOverlay" class="cart-drawer-overlay">
+    <div class="cart-drawer" role="dialog" aria-modal="true" aria-labelledby="cartTitle">
+      <div class="cart-header">
+        <h2 id="cartTitle" class="cart-title">Your Jewelry Bag</h2>
+        <button id="cartClose" class="btn-close" aria-label="Close Shopping Bag">&times;</button>
+      </div>
+      
+      <!-- Items loaded dynamically -->
+      <div id="cartItems" class="cart-items"></div>
+      
+      <div class="cart-footer">
+        <div class="cart-summary-row">
+          <span>Subtotal</span>
+          <span id="cartSubtotal">$0</span>
+        </div>
+        <div class="cart-summary-row" id="cartDiscountRow" style="display: none;">
+          <span>Discount (15%)</span>
+          <span id="cartDiscount" class="discount-tag">-$0</span>
+        </div>
+        <div class="cart-summary-row total">
+          <span>Total</span>
+          <span id="cartTotal">$0</span>
+        </div>
+        
+        <div class="promo-code-box">
+          <input type="text" id="promoInput" class="promo-input" placeholder="Promo Code (e.g. WELCOME15)">
+          <button id="btnApplyPromo" class="btn-apply-promo">Apply</button>
+        </div>
+        
+        <button class="btn-primary btn-checkout" id="btnCheckout" onclick="alert('Proceeding to checkout simulation...')">Secure Checkout</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- --- ADMIN PRODUCT BUILDER MODAL --- -->
+  <div id="adminOverlay" class="admin-modal-overlay">
+    <div class="admin-modal" role="dialog" aria-modal="true" aria-labelledby="adminModalTitle">
+      <div class="admin-header">
+        <h2 id="adminModalTitle">Add New Jewelry Product</h2>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+          <button id="btnAdminReset" class="btn-admin" style="border-color: var(--color-alert); color: var(--color-alert);" title="Restore original 10 products and delete custom changes">Reset Catalog</button>
+          <button id="adminClose" class="btn-close" aria-label="Close Product Builder">&times;</button>
+        </div>
+      </div>
+      
+      <div class="admin-body">
+        <!-- Form to Add/Edit Products -->
+        <div class="admin-form-col">
+          <form id="adminProductForm">
+            <div class="form-group">
+              <label for="prodName">Product Name *</label>
+              <input type="text" id="prodName" class="form-control" placeholder="e.g. Sapphire Tiara" required>
+            </div>
+            
+            <div class="form-group">
+              <label for="prodPrice">Price (USD) *</label>
+              <input type="number" id="prodPrice" class="form-control" placeholder="e.g. 5200" min="0" required>
+            </div>
+            
+            <div class="form-group">
+              <label for="prodCategory">Category</label>
+              <select id="prodCategory" class="form-control">
+                <option value="Rings">Rings</option>
+                <option value="Necklaces">Necklaces</option>
+                <option value="Earrings">Earrings</option>
+                <option value="Bracelets">Bracelets</option>
+              </select>
+            </div>
+            
+            <div class="form-group">
+              <label for="prodDescription">Product Description</label>
+              <textarea id="prodDescription" class="form-control" placeholder="Describe the gemstones, band materials, cut, and craftsmanship..."></textarea>
+            </div>
+            
+            <div class="form-group">
+              <label for="prodImage">Image Path or URL</label>
+              <input type="text" id="prodImage" class="form-control" placeholder="e.g. images/my_image.png">
+              <p style="font-size:0.7rem; color:var(--color-text-secondary); margin-top:0.3rem;">Place your images in the <code>images/</code> folder and enter the path here, or paste an external HTTP image link.</p>
+            </div>
+            
+            <div class="form-group">
+              <label for="prodKeywords">Trigger Keywords (comma-separated)</label>
+              <input type="text" id="prodKeywords" class="form-control" placeholder="e.g. sapphire, tiara, crown">
+              <p style="font-size:0.7rem; color:var(--color-text-secondary); margin-top:0.3rem;">If the Agent mentions these keywords, this product will auto-scroll and highlight.</p>
+            </div>
+            
+            <div class="form-group checkbox-group">
+              <input type="checkbox" id="prodHighlight">
+              <label for="prodHighlight">Display in Highlighted Showcase (below carousel)</label>
+            </div>
+            
+            <div class="form-actions">
+              <button type="button" id="btnAdminCancel" class="btn-form cancel">Cancel</button>
+              <button type="submit" id="btnAdminSubmit" class="btn-form submit">Add to Catalog</button>
+            </div>
+          </form>
+        </div>
+        
+        <!-- List of Existing Products for Managing -->
+        <div class="admin-list-col">
+          <h3 class="admin-table-title">Manage Catalog List</h3>
+          <div id="adminProdList" class="admin-prod-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- --- SALESFORCE AGENTFORCE HTML SNIPPET --- -->
+  <script type='text/javascript'>
+    function initEmbeddedMessaging() {
+      try {
+        embeddedservice_bootstrap.settings.language = 'en_US'; // For example, enter 'en' or 'en-US'
+        
+        embeddedservice_bootstrap.init(
+          '00Dg8000006eGtp',
+          'Service_Agent_Lumina',
+          'https://os1779160828320.my.site.com/ESWServiceAgentLumina1780899485218',
+          {
+            scrt2URL: 'https://os1779160828320.my.salesforce-scrt.com'
+          }
+        );
+      } catch (err) {
+        console.error('Error loading Embedded Messaging: ', err);
+      }
+    };
+  </script>
+  <script type='text/javascript' src='https://os1779160828320.my.site.com/ESWServiceAgentLumina1780899485218/assets/js/bootstrap.min.js' onload='initEmbeddedMessaging()'></script>
+
+
+</body>
+</html>
