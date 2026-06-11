@@ -51,7 +51,7 @@ const DEFAULT_PRODUCTS = [
     highlighted: false
   },
   {
-    id: "prod-6",
+    id: "prod-6",//id
     name: "Marquise Cut Solitaire Ring",
     price: 5500,
     category: "Rings",
