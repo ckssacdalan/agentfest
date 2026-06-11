@@ -7,6 +7,7 @@
   <meta name="description" content="Discover premium handcrafted rings, necklaces, earrings, and bracelets at Lumina Atelier. Fully responsive demo with integrated Agentforce chat support.">
   <link rel="stylesheet" href="styles.css">
   <script src="app.js" defer></script>
+  <script src="agentforce-chat.js" defer></script>
   <!-- Salesforce Beacon Script -->
   <script type="text/javascript" async="" src="https://cdn.c360a.salesforce.com/beacon/c360a/36f000dc-c237-4c8b-a5c8-f75b1581d958/scripts/c360a.min.js"></script>
 </head>
@@ -270,11 +271,11 @@
     function initEmbeddedMessaging() {
       try {
         embeddedservice_bootstrap.settings.language = 'en_US'; // For example, enter 'en' or 'en-US'
-        
+
         embeddedservice_bootstrap.init(
           '00Dg8000006eGtp',
-          'Service_Agent_Lumina',
-          'https://os1779160828320.my.site.com/ESWServiceAgentLumina1780899485218',
+          'Retail_Service_Agent_Netlify',
+          'https://os1779160828320.my.site.com/ESWRetailServiceAgentN1781165677609',
           {
             scrt2URL: 'https://os1779160828320.my.salesforce-scrt.com'
           }
@@ -284,8 +285,6 @@
       }
     };
   </script>
-  <script type='text/javascript' src='https://os1779160828320.my.site.com/ESWServiceAgentLumina1780899485218/assets/js/bootstrap.min.js' onload='initEmbeddedMessaging()'></script>
-
-
+<script type='text/javascript' src='https://os1779160828320.my.site.com/ESWRetailServiceAgentN1781165677609/assets/js/bootstrap.min.js' onload='initEmbeddedMessaging()'></script>
 </body>
 </html>
