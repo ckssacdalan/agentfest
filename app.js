@@ -51,7 +51,7 @@ const DEFAULT_PRODUCTS = [
     highlighted: false
   },
   {
-    id: "prod-6",
+    id: "prod-6",//id
     name: "Marquise Cut Solitaire Ring",
     price: 5500,
     category: "Rings",
@@ -115,7 +115,6 @@ document.addEventListener("DOMContentLoaded", () => {
   initCart();
   renderAll();
   setupEventListeners();
-  setupSalesforceListeners();
   
   // Initialize SPA router
   handleRouting();
@@ -342,6 +341,8 @@ function getAdjustedPrice(product, metal) {
 // --- SPA Hash Router ---
 function handleRouting() {
   const hash = window.location.hash;
+  const productRouteMatch = hash.match(/^#\/?product\/([^/?#]+)/);
+  const recommendationRouteMatch = hash.match(/^#\/?recommendation\/(.+)/);
   const productDetailSection = document.getElementById("productDetailSection");
   const heroBanner = document.getElementById("heroBanner");
   const carouselSection = document.getElementById("carousel-section");
@@ -349,8 +350,8 @@ function handleRouting() {
 
   if (!productDetailSection) return;
 
-  if (hash.startsWith("#/product/")) {
-    const productId = hash.replace("#/product/", "");
+  if (productRouteMatch) {
+    const productId = decodeURIComponent(productRouteMatch[1]);
     const product = products.find(p => p.id === productId);
 
     if (product) {
@@ -370,6 +371,17 @@ function handleRouting() {
     } else {
       window.location.hash = "#";
     }
+  } else if (recommendationRouteMatch) {
+    if (heroBanner) heroBanner.style.display = "block";
+    if (carouselSection) carouselSection.style.display = "block";
+    if (highlightSection) highlightSection.style.display = "block";
+
+    productDetailSection.style.display = "none";
+    productDetailSection.innerHTML = "";
+
+    setTimeout(() => {
+      carouselSection?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
   } else {
     // Show home sections
     if (heroBanner) heroBanner.style.display = "block";
@@ -670,7 +682,7 @@ function renderAll() {
   
   // Rerender active detail view if open
   const hash = window.location.hash;
-  if (hash.startsWith("#/product/")) {
+  if (/^#\/?product\//.test(hash)) {
     handleRouting();
   }
 }
