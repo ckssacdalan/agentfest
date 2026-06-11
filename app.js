@@ -240,6 +240,32 @@ function upsertAgentforceServiceProduct(productCode, details = {}) {
   return serviceProduct;
 }
 
+function upsertAgentforceRingProduct(productCode, details = {}) {
+  const normalizedCode = String(productCode || "").trim();
+  if (!normalizedCode) return null;
+
+  const existing = findProductByCode(normalizedCode);
+  if (existing) return existing;
+
+  const ringProduct = {
+    id: normalizedCode,
+    productCode: normalizedCode,
+    name: details.name || normalizedCode,
+    price: Number.isFinite(Number(details.price)) ? Number(details.price) : 0,
+    category: "Rings",
+    family: "Rings",
+    description: details.description || "Ring product added by Agentforce.",
+    image: details.image || "",
+    keywords: details.keywords || "ring, agentforce",
+    highlighted: false,
+    source: "agentforce"
+  };
+
+  agentforceProducts.push(ringProduct);
+  saveAgentforceProducts();
+  return ringProduct;
+}
+
 function addProduct(productData) {
   const newProduct = {
     id: "prod-" + Date.now(),
@@ -1289,12 +1315,17 @@ window.LuminaStorefront = {
     const added = [];
     const missing = [];
     const serviceDetailsByCode = options.serviceDetailsByCode || {};
+    const productDetailsByCode = options.productDetailsByCode || {};
 
     codes.forEach(productCode => {
       let product = findProductByCode(productCode);
 
       if (!product && options.serviceCodes?.includes(productCode)) {
         product = upsertAgentforceServiceProduct(productCode, serviceDetailsByCode[productCode] || {});
+      }
+
+      if (!product && productDetailsByCode[productCode]) {
+        product = upsertAgentforceRingProduct(productCode, productDetailsByCode[productCode]);
       }
 
       if (!product) {
@@ -1329,6 +1360,9 @@ window.LuminaStorefront = {
   },
   createServiceProduct(productCode, details = {}) {
     return upsertAgentforceServiceProduct(productCode, details);
+  },
+  createRingProduct(productCode, details = {}) {
+    return upsertAgentforceRingProduct(productCode, details);
   },
   applyAgentforceDiscount() {
     return applyPromoCode("AGENT15");
