@@ -66,7 +66,50 @@
       .filter((id, index, ids) => ids.findIndex(existing => existing.toLowerCase() === id.toLowerCase()) === index);
   }
 
+  function extractCodes(text) {
+    const codeText = String(text || "").includes(":")
+      ? String(text || "").split(":").slice(1).join(":")
+      : String(text || "");
+
+    return Array.from(codeText.matchAll(/\b[a-z0-9][a-z0-9_-]*\b/gi), match => match[0])
+      .filter(code => !["and", "or", "with"].includes(code.toLowerCase()))
+      .filter(code => !/^\d+$/.test(code))
+      .filter((code, index, codes) => codes.findIndex(existing => existing.toLowerCase() === code.toLowerCase()) === index);
+  }
+
+  function getListenerLine(messageText, listenerPrefix) {
+    const normalizedPrefix = listenerPrefix.toLowerCase();
+
+    return String(messageText || "")
+      .split(/\r?\n/)
+      .find(line => line.trim().toLowerCase().startsWith(normalizedPrefix)) || "";
+  }
+
   function parseHumanRouteSentence(messageText) {
+    const recommendedRingsLine = getListenerLine(messageText, "Showing recommended rings:");
+    if (recommendedRingsLine) {
+      const productIds = extractProductIds(recommendedRingsLine);
+
+      if (productIds.length > 0) {
+        return {
+          type: "recommended",
+          productIds
+        };
+      }
+    }
+
+    const requestedRingsLine = getListenerLine(messageText, "Showing requested rings:");
+    if (requestedRingsLine) {
+      const productIds = extractProductIds(requestedRingsLine);
+
+      if (productIds.length > 0) {
+        return {
+          type: "product",
+          productIds: [productIds[0]]
+        };
+      }
+    }
+
     const recommendationMatch = messageText.match(/\bShowing recommendations for\s+(.+?)(?:[.!?]\s|[.!?]?$|$)/i);
 
     if (recommendationMatch) {
@@ -74,7 +117,7 @@
 
       if (productIds.length > 0) {
         return {
-          type: "recommendation",
+          type: "recommended",
           productIds
         };
       }
@@ -98,7 +141,7 @@
 
     if (productIds.length > 1) {
       return {
-        type: "recommendation",
+        type: "recommended",
         productIds
       };
     }
@@ -117,11 +160,40 @@
     return parseHumanRouteSentence(messageText) || parseProductCodes(messageText);
   }
 
+  function routeAgentCartFromMessage(messageText) {
+    const addedWithEngravingLine = getListenerLine(messageText, "Added ring with engraving to cart:");
+    const addedRingLine = getListenerLine(messageText, "Added ring to cart:");
+    const cartLine = addedWithEngravingLine || addedRingLine;
+    if (!cartLine) return false;
+
+    const codes = extractCodes(cartLine);
+    if (codes.length === 0) return false;
+
+    const ringCodes = codes.filter(code => /^prod-/i.test(code));
+    const serviceCodes = addedWithEngravingLine
+      ? codes.filter(code => !/^prod-/i.test(code))
+      : [];
+
+    const storefront = window.LuminaStorefront;
+    if (!storefront || typeof storefront.addAgentforceCartItems !== "function") {
+      window.setTimeout(() => routeAgentCartFromMessage(messageText), 250);
+      return true;
+    }
+
+    storefront.addAgentforceCartItems([...ringCodes, ...serviceCodes], {
+      source: "agentforce",
+      serviceCodes,
+      applyAgentforceDiscount: true
+    });
+
+    return true;
+  }
+
   function setHashForRoute(route) {
     if (!route || route.productIds.length === 0) return;
 
-    const hash = route.type === "recommendation"
-      ? `#recommendation/${route.productIds.map(encodeURIComponent).join("/")}`
+    const hash = route.type === "recommended"
+      ? `#recommended/${route.productIds.map(encodeURIComponent).join("/")}`
       : `#product/${encodeURIComponent(route.productIds[0])}`;
 
     if (window.location.hash !== hash) {
@@ -130,10 +202,10 @@
   }
 
   function highlightRecommendationCards() {
-    const recommendationMatch = window.location.hash.match(/^#\/?recommendation\/(.+)/);
+    const recommendationMatch = window.location.hash.match(/^#\/?(recommended|recommendation)\/(.+)/);
     if (!recommendationMatch) return;
 
-    const productIds = recommendationMatch[1]
+    const productIds = recommendationMatch[2]
       .split("/")
       .map(id => decodeURIComponent(id).trim())
       .filter(Boolean);
@@ -157,6 +229,7 @@
 
     const route = routeFromAgentMessage(messageText);
     setHashForRoute(route);
+    routeAgentCartFromMessage(messageText);
   }
 
   function registerModernEmbeddedMessagingListeners() {
@@ -184,6 +257,7 @@
 
         const route = routeFromAgentMessage(messageText);
         setHashForRoute(route);
+        routeAgentCartFromMessage(messageText);
       });
     }, 1000);
 
