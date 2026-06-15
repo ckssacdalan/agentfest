@@ -32,6 +32,17 @@
       </nav>
 
       <div class="nav-actions">
+        <!-- Loyalty Scheme Widget -->
+        <a href="#/loyalty" class="user-loyalty-widget-link" style="text-decoration: none;">
+          <div class="user-loyalty-widget" id="headerLoyaltyWidget" title="View Loyalty Profile">
+            <div class="user-avatar">AT</div>
+            <div class="user-loyalty-info hide-mobile">
+              <span class="user-name">Andrew Thomas</span>
+              <span class="user-points"><span id="headerPointsCount">850</span> points</span>
+            </div>
+          </div>
+        </a>
+
         <button id="btnAdminOpen" class="btn-admin" aria-label="Open Catalog Admin Panel">
           Admin <span class="hide-mobile">Panel</span>
         </button>
@@ -56,6 +67,16 @@
     <!-- Mobile Navigation Drawer / Dropdown -->
     <div id="mobileNavMenu" class="mobile-nav-menu">
       <nav aria-label="Mobile Navigation">
+        <!-- Mobile Loyalty Widget -->
+        <a href="#/loyalty" class="mobile-loyalty-widget-link" style="text-decoration: none; width: 100%;">
+          <div class="mobile-loyalty-widget" title="View Loyalty Profile">
+            <div class="user-avatar">AT</div>
+            <div class="mobile-loyalty-info">
+              <span class="user-name">Andrew Thomas</span>
+              <span class="user-points"><span id="mobilePointsCount">850</span> points</span>
+            </div>
+          </div>
+        </a>
         <ul class="mobile-nav-links">
           <li><a href="#carousel-section" id="mobNavCatalog">Catalog</a></li>
           <li><a href="#highlight-section" id="mobNavHighlights">Highlights</a></li>
@@ -114,6 +135,11 @@
     <!-- Loaded dynamically via JavaScript -->
   </section>
 
+  <!-- --- LOYALTY PROFILE SECTION (SPA) --- -->
+  <section id="loyaltyProfileSection" class="loyalty-profile-section" style="display: none;">
+    <!-- Loaded dynamically via JavaScript -->
+  </section>
+
   <!-- --- FOOTER --- -->
   <footer class="footer">
     <div class="container">
@@ -169,6 +195,19 @@
       <div id="cartItems" class="cart-items"></div>
       
       <div class="cart-footer">
+        <!-- Loyalty Redemption Widget in Cart -->
+        <div class="loyalty-redeem-box">
+          <div class="loyalty-info-row">
+            <span class="loyalty-title-text">Redeem Loyalty Points</span>
+            <span id="loyaltyBalanceText" class="loyalty-balance-tag">850 pts ($85.00) available</span>
+          </div>
+          <div class="loyalty-input-row">
+            <input type="number" id="loyaltyInput" class="loyalty-input" min="0" placeholder="Points to spend">
+            <button id="btnApplyLoyalty" class="btn-apply-loyalty">Apply</button>
+            <button id="btnUseMaxLoyalty" class="btn-use-max-loyalty">Max</button>
+          </div>
+        </div>
+
         <div class="cart-summary-row">
           <span>Subtotal</span>
           <span id="cartSubtotal">$0</span>
@@ -176,6 +215,11 @@
         <div class="cart-summary-row" id="cartDiscountRow" style="display: none;">
           <span>Discount (15%)</span>
           <span id="cartDiscount" class="discount-tag">-$0</span>
+        </div>
+        <!-- Loyalty Discount Row -->
+        <div class="cart-summary-row" id="cartLoyaltyDiscountRow" style="display: none;">
+          <span>Loyalty Points Redeemed (<span id="cartPointsSpentText">0</span> pts)</span>
+          <span id="cartLoyaltyDiscount" class="discount-tag">-$0</span>
         </div>
         <div class="cart-summary-row total">
           <span>Total</span>
@@ -186,8 +230,16 @@
           <input type="text" id="promoInput" class="promo-input" placeholder="Promo Code (e.g. WELCOME15)">
           <button id="btnApplyPromo" class="btn-apply-promo">Apply</button>
         </div>
+
+        <!-- Loyalty Points Gained Banner -->
+        <div class="loyalty-earned-banner">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="loyalty-star-icon">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+          </svg>
+          <span>You will earn <strong id="cartPointsEarned">0</strong> loyalty points</span>
+        </div>
         
-        <button class="btn-primary btn-checkout" id="btnCheckout" onclick="alert('Proceeding to checkout simulation...')">Secure Checkout</button>
+        <button class="btn-primary btn-checkout" id="btnCheckout">Secure Checkout</button>
       </div>
     </div>
   </div>
@@ -266,12 +318,61 @@
   </div>
 
 
+  <!-- --- ORDER CONFIRMATION MODAL --- -->
+  <div id="confirmationOverlay" class="confirmation-modal-overlay">
+    <div class="confirmation-modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+      <div class="confirm-icon">✦</div>
+      <h2 id="confirmTitle" class="confirm-title">Order Confirmed</h2>
+      <p class="confirm-subtitle">Thank you for your purchase, Andrew Thomas!</p>
+      
+      <div class="confirm-details">
+        <div class="confirm-row">
+          <span>Order Number:</span>
+          <strong id="confirmOrderNo">LMA-1029384</strong>
+        </div>
+        <hr class="confirm-divider">
+        <div class="confirm-summary">
+          <div class="confirm-row">
+            <span>Subtotal:</span>
+            <span id="confirmSubtotal">$0</span>
+          </div>
+          <div class="confirm-row" id="confirmPromoDiscountRow" style="display: none;">
+            <span>Promo Discount:</span>
+            <span id="confirmPromoDiscount">-$0</span>
+          </div>
+          <div class="confirm-row" id="confirmLoyaltyDiscountRow" style="display: none;">
+            <span>Loyalty Discount (<span id="confirmPointsSpent">0</span> pts):</span>
+            <span id="confirmLoyaltyDiscount">-$0</span>
+          </div>
+          <div class="confirm-row total">
+            <span>Total Paid (Cash):</span>
+            <span id="confirmTotal">$0</span>
+          </div>
+        </div>
+        <hr class="confirm-divider">
+        <div class="confirm-loyalty-recap">
+          <div class="confirm-row">
+            <span>Loyalty Points Gained:</span>
+            <span class="points-gain" id="confirmPointsGained">+0 points</span>
+          </div>
+          <div class="confirm-row">
+            <span>New Points Balance:</span>
+            <strong id="confirmNewBalance">850 points</strong>
+          </div>
+        </div>
+      </div>
+      
+      <button id="btnConfirmClose" class="btn-primary confirm-btn-close">Continue Shopping</button>
+    </div>
+  </div>
+
+
   <!-- --- SALESFORCE AGENTFORCE HTML SNIPPET --- -->
   <script type='text/javascript'>
     function initEmbeddedMessaging() {
       try {
         embeddedservice_bootstrap.settings.language = 'en_US'; // For example, enter 'en' or 'en-US'
-
+        
         embeddedservice_bootstrap.init(
           '00Dg8000006eGtp',
           'Retail_Service_Agent_Netlify',
@@ -285,6 +386,8 @@
       }
     };
   </script>
-<script type='text/javascript' src='https://os1779160828320.my.site.com/ESWRetailServiceAgentN1781165677609/assets/js/bootstrap.min.js' onload='initEmbeddedMessaging()'></script>
+  <script type='text/javascript' src='https://os1779160828320.my.site.com/ESWRetailServiceAgentN1781165677609/assets/js/bootstrap.min.js' onload='initEmbeddedMessaging()'></script>
+
+
 </body>
 </html>
