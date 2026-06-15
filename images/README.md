@@ -1,3 +1,4 @@
+# backup for no loyalty
 # Product Images
 
 Place your product images in this folder (e.g., `ring.jpg`, `necklace.png`, etc.).
