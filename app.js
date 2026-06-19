@@ -2325,14 +2325,15 @@ function openCart(cartId = "") {
     cartId = "";
   }
 
-  if (!normalizeCartId(cartId) && cart.length === 0) {
-    window.location.hash = "#cart";
-    return;
+  const targetCartId = normalizeCartId(cartId);
+  if (targetCartId) {
+    prepareCartForMutation(targetCartId);
   }
 
-  const targetCartId = prepareCartForMutation(cartId);
-  window.location.hash = `#cart/${targetCartId}`;
+  renderCartDrawer();
+  document.getElementById("cartOverlay")?.classList.add("active");
 }
+
 function closeCart() {
   if (isCartHash()) {
     window.location.hash = "#";
