@@ -138,6 +138,14 @@
   }
 
   /*****************************************************************
+   * Extracts generated Salesforce cart ids such as CART-00000123.
+   ******************************************************************/
+  function extractCartId(text) {
+    const match = String(text || "").match(/\bCART-[A-Z0-9-]+\b/i);
+    return match ? match[0] : "";
+  }
+
+  /*****************************************************************
    * Extracts generic item codes after an action phrase.
    ******************************************************************/
   function extractCodes(text) {
@@ -147,6 +155,7 @@
 
     return Array.from(codeText.matchAll(/\b[a-z0-9][a-z0-9_-]*\b/gi), match => match[0])
       .filter(code => !["and", "or", "with"].includes(code.toLowerCase()))
+      .filter(code => !/^cart-/i.test(code))
       .filter(code => !/^\d+$/.test(code))
       .filter((code, index, codes) => codes.findIndex(existing => existing.toLowerCase() === code.toLowerCase()) === index);
   }
@@ -318,6 +327,7 @@
   function extractCartDetails(messageText) {
     const productDetailsByCode = {};
     const serviceDetailsByCode = {};
+    const cartItems = [];
     const lines = String(messageText || "").split(/\r?\n/).map(line => line.trim());
 
     for (let index = 0; index < lines.length; index += 1) {
@@ -332,11 +342,13 @@
       }
 
       const blockText = block.join("\n");
+      const cartId = extractCartId(line) || extractCartId(getLabelValue(blockText, "Cart ID"));
       const codeMatch = blockText.match(/\*\*Code:\*\*\s*([a-z0-9_-]+)/i);
       const codesMatch = blockText.match(/\*\*Codes:\*\*\s*(.+)$/im);
       const lineCodes = extractCodes(line);
       const lineHasEngraving = isCartWithEngravingKeywordLine(line);
-      const ringCode = codeMatch?.[1] || lineCodes[0];
+      const codes = codesMatch ? extractCodes(codesMatch[1]) : extractCodes(line);
+      const ringCode = codeMatch?.[1] || codes[0] || lineCodes[0];
       const productName = blockText.match(/\*\*Product name:\*\*\s*(.+)$/im)?.[1]?.trim();
       const ringPrice = parsePrice(blockText.match(/\*\*Ring price:\*\*\s*(.+)$/im)?.[1]);
 
@@ -349,7 +361,6 @@
 
       const engravingName = blockText.match(/\*\*Engraving service:\*\*\s*(.+)$/im)?.[1]?.trim();
       const engravingPrice = parsePrice(blockText.match(/\*\*Engraving price:\*\*\s*(.+)$/im)?.[1]);
-      const codes = codesMatch ? extractCodes(codesMatch[1]) : extractCodes(line);
       const serviceCode = lineHasEngraving && codes.length > 1 ? codes[codes.length - 1] : "";
 
       if (serviceCode && (engravingName || engravingPrice !== undefined)) {
@@ -358,11 +369,20 @@
           price: engravingPrice
         });
       }
+
+      if (ringCode || serviceCode) {
+        cartItems.push({
+          cartId,
+          ringCode,
+          serviceCode
+        });
+      }
     }
 
     return {
       productDetailsByCode,
-      serviceDetailsByCode
+      serviceDetailsByCode,
+      cartItems
     };
   }
 
@@ -458,6 +478,7 @@
 
         if (fields.productId) {
           items.push({
+            cartId: fields.cartId ? decodeURIComponent(fields.cartId) : "",
             productCode: decodeURIComponent(fields.productId),
             productDetails: {
               name: fields.name ? decodeURIComponent(fields.name) : undefined
@@ -601,51 +622,96 @@
    ******************************************************************/
   function routeAgentCartFromMessage(messageText) {
     const cartLines = getListenerLines(messageText, CART_KEYWORDS);
-
-    const ringCodes = [];
-    const serviceCodes = [];
     const payloadItems = parseCartPayloadLines(messageText);
-    const { productDetailsByCode, serviceDetailsByCode } = extractCartDetails(messageText);
+    const { productDetailsByCode, serviceDetailsByCode, cartItems } = extractCartDetails(messageText);
     const summaryFallback = cartLines.length === 0 && payloadItems.length === 0
       ? parseCartSummaryFallback(messageText)
       : null;
 
     if (cartLines.length === 0 && payloadItems.length === 0 && !summaryFallback?.ringCodes.length) return false;
 
-    cartLines.forEach(line => {
-      const codes = extractCodes(line);
-      const lineHasEngraving = isCartWithEngravingKeywordLine(line);
-      const lineServiceCodes = lineHasEngraving && codes.length > 1
-        ? [codes[codes.length - 1]]
-        : [];
-      const lineRingCodes = lineHasEngraving && codes.length > 1
-        ? codes.slice(0, -1)
-        : codes;
+    const cartGroups = new Map();
 
-      ringCodes.push(...lineRingCodes);
+    function getCartGroup(cartId = "") {
+      const normalizedCartId = extractCartId(cartId) || String(cartId || "").trim();
+      const key = normalizedCartId || "__legacy__";
 
-      if (lineHasEngraving && lineServiceCodes.length > 0) {
-        if (lineServiceCodes.length === 1 && lineRingCodes.length > 1) {
-          lineRingCodes.forEach(() => serviceCodes.push(lineServiceCodes[0]));
-        } else {
-          serviceCodes.push(...lineServiceCodes);
-        }
+      if (!cartGroups.has(key)) {
+        cartGroups.set(key, {
+          cartId: key === "__legacy__" ? "" : key,
+          ringCodes: [],
+          ringKeys: new Set(),
+          serviceCodes: [],
+          servicePairs: new Set()
+        });
       }
-    });
+
+      return cartGroups.get(key);
+    }
+
+    function addCartGroupItem(cartId, ringCode, serviceCode = "") {
+      const group = getCartGroup(cartId);
+      const normalizedRingKey = normalizeCodeKey(ringCode);
+
+      if (ringCode && !group.ringKeys.has(normalizedRingKey)) {
+        group.ringCodes.push(ringCode);
+        group.ringKeys.add(normalizedRingKey);
+      }
+
+      if (serviceCode) {
+        const servicePairKey = `${normalizedRingKey || "service"}:${normalizeCodeKey(serviceCode)}`;
+        if (group.servicePairs.has(servicePairKey)) return;
+
+        group.serviceCodes.push(serviceCode);
+        group.servicePairs.add(servicePairKey);
+      }
+    }
+
+    if (cartItems.length > 0) {
+      cartItems.forEach(item => {
+        addCartGroupItem(item.cartId, item.ringCode, item.serviceCode);
+      });
+    } else {
+      cartLines.forEach(line => {
+        const codes = extractCodes(line);
+        const lineHasEngraving = isCartWithEngravingKeywordLine(line);
+        const lineServiceCodes = lineHasEngraving && codes.length > 1
+          ? [codes[codes.length - 1]]
+          : [];
+        const lineRingCodes = lineHasEngraving && codes.length > 1
+          ? codes.slice(0, -1)
+          : codes;
+        const cartId = extractCartId(line);
+
+        lineRingCodes.forEach(ringCode => {
+          addCartGroupItem(cartId, ringCode, "");
+        });
+
+        if (lineHasEngraving && lineServiceCodes.length > 0) {
+          if (lineServiceCodes.length === 1 && lineRingCodes.length > 1) {
+            lineRingCodes.forEach(ringCode => addCartGroupItem(cartId, ringCode, lineServiceCodes[0]));
+          } else {
+            lineServiceCodes.forEach((serviceCode, index) => {
+              addCartGroupItem(cartId, lineRingCodes[index] || "", serviceCode);
+            });
+          }
+        }
+      });
+    }
 
     payloadItems.forEach(item => {
-      ringCodes.push(item.productCode);
+      addCartGroupItem(item.cartId, item.productCode, item.serviceCode);
       addDetails(productDetailsByCode, item.productCode, item.productDetails);
 
       if (item.serviceCode) {
-        serviceCodes.push(item.serviceCode);
         addDetails(serviceDetailsByCode, item.serviceCode, item.serviceDetails);
       }
     });
 
     if (summaryFallback) {
-      ringCodes.push(...summaryFallback.ringCodes);
-      serviceCodes.push(...summaryFallback.serviceCodes);
+      const fallbackGroup = getCartGroup("");
+      summaryFallback.ringCodes.forEach(ringCode => addCartGroupItem("", ringCode, ""));
+      summaryFallback.serviceCodes.forEach(serviceCode => fallbackGroup.serviceCodes.push(serviceCode));
       Object.entries(summaryFallback.productDetailsByCode).forEach(([code, details]) => {
         addDetails(productDetailsByCode, code, details);
       });
@@ -654,7 +720,10 @@
       });
     }
 
-    if (ringCodes.length === 0 && serviceCodes.length === 0) return false;
+    const groups = Array.from(cartGroups.values())
+      .filter(group => group.ringCodes.length > 0 || group.serviceCodes.length > 0);
+
+    if (groups.length === 0) return false;
 
     const storefront = window.LuminaStorefront;
     if (!storefront || typeof storefront.addAgentforceCartItems !== "function") {
@@ -662,16 +731,19 @@
       return true;
     }
 
-    const uniqueServiceCodes = serviceCodes.filter((code, index, codes) =>
-      codes.findIndex(existing => normalizeCodeKey(existing) === normalizeCodeKey(code)) === index
-    );
+    groups.forEach(group => {
+      const uniqueServiceCodes = group.serviceCodes.filter((code, index, codes) =>
+        codes.findIndex(existing => normalizeCodeKey(existing) === normalizeCodeKey(code)) === index
+      );
 
-    storefront.addAgentforceCartItems([...ringCodes, ...serviceCodes], {
-      source: "agentforce",
-      serviceCodes: uniqueServiceCodes,
-      productDetailsByCode,
-      serviceDetailsByCode,
-      applyAgentforceDiscount: true
+      storefront.addAgentforceCartItems([...group.ringCodes, ...group.serviceCodes], {
+        source: "agentforce",
+        cartId: group.cartId,
+        serviceCodes: uniqueServiceCodes,
+        productDetailsByCode,
+        serviceDetailsByCode,
+        applyAgentforceDiscount: true
+      });
     });
 
     return true;

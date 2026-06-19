@@ -123,9 +123,15 @@ const DEFAULT_PRODUCTS = [
 ];
 
 // --- Application State ---
+const CART_STORAGE_KEY = "lumina_cart";
+const CARTS_BY_ID_STORAGE_KEY = "lumina_carts_by_id";
+const ACTIVE_CART_ID_STORAGE_KEY = "lumina_cart_id";
+
 let products = [];
 let agentforceProducts = [];
 let cart = [];
+let activeCartId = null;
+let viewingAllCarts = false;
 let activeDiscount = 0; // percentage, e.g. 15 for 15%
 let activeDiscountCode = "";
 let editingProductId = null;
@@ -330,11 +336,187 @@ function deleteProduct(id) {
 }
 
 // --- Cart Operations ---
+function normalizeCartId(cartId) {
+  const normalized = String(cartId || "").trim();
+  if (!normalized) return "";
+
+  try {
+    return decodeURIComponent(normalized).replace(/[?#].*$/, "").trim();
+  } catch (e) {
+    return normalized.replace(/[?#].*$/, "").trim();
+  }
+}
+
+function generateCartId(prefix = "CART") {
+  return `${prefix}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+}
+
+function readCartRegistry() {
+  const stored = localStorage.getItem(CARTS_BY_ID_STORAGE_KEY);
+  if (!stored) return {};
+
+  try {
+    const parsed = JSON.parse(stored);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function writeCartRegistry(registry) {
+  localStorage.setItem(CARTS_BY_ID_STORAGE_KEY, JSON.stringify(registry || {}));
+}
+
+function sanitizeCartItems(items) {
+  return (Array.isArray(items) ? items : [])
+    .filter(Boolean)
+    .map(({ cartId, ...item }) => ({ ...item }));
+}
+
+function getCartRecord(cartId) {
+  const normalizedCartId = normalizeCartId(cartId);
+  if (!normalizedCartId) return null;
+
+  return readCartRegistry()[normalizedCartId] || null;
+}
+
+function getCartItemsForCartId(cartId) {
+  const record = getCartRecord(cartId);
+  return sanitizeCartItems(record?.items || []);
+}
+
+function saveCartRecord(cartId, items = cart) {
+  const normalizedCartId = normalizeCartId(cartId);
+  if (!normalizedCartId) return;
+
+  const registry = readCartRegistry();
+  registry[normalizedCartId] = {
+    ...(registry[normalizedCartId] || {}),
+    cartId: normalizedCartId,
+    items: sanitizeCartItems(items),
+    discount: {
+      percent: activeDiscount,
+      code: activeDiscountCode
+    },
+    updatedAt: new Date().toISOString(),
+    createdAt: registry[normalizedCartId]?.createdAt || new Date().toISOString()
+  };
+  writeCartRegistry(registry);
+}
+
+function removeCartRecord(cartId) {
+  const normalizedCartId = normalizeCartId(cartId);
+  if (!normalizedCartId) return;
+
+  const registry = readCartRegistry();
+  delete registry[normalizedCartId];
+  writeCartRegistry(registry);
+}
+
+function ensureActiveCartId(preferredCartId = "") {
+  const normalizedPreferred = normalizeCartId(preferredCartId);
+  const normalizedActive = normalizeCartId(activeCartId);
+  const storedActive = normalizeCartId(localStorage.getItem(ACTIVE_CART_ID_STORAGE_KEY));
+  const cartId = normalizedPreferred || normalizedActive || storedActive || generateCartId();
+
+  activeCartId = cartId;
+  localStorage.setItem(ACTIVE_CART_ID_STORAGE_KEY, cartId);
+  return cartId;
+}
+
+function prepareCartForMutation(preferredCartId = "") {
+  const previousCartId = activeCartId;
+  const cartId = ensureActiveCartId(preferredCartId);
+
+  if (viewingAllCarts || previousCartId !== cartId) {
+    cart = getCartItemsForCartId(cartId);
+  }
+
+  viewingAllCarts = false;
+  activeCartId = cartId;
+  return cartId;
+}
+
+function applyCartRecordDiscount(record) {
+  activeDiscount = Number(record?.discount?.percent) || 0;
+  activeDiscountCode = record?.discount?.code || "";
+}
+
+function loadCartById(cartId) {
+  const normalizedCartId = normalizeCartId(cartId);
+  const record = getCartRecord(normalizedCartId);
+
+  activeCartId = normalizedCartId || null;
+  viewingAllCarts = false;
+  cart = sanitizeCartItems(record?.items || []);
+  applyCartRecordDiscount(record);
+
+  if (activeCartId) {
+    localStorage.setItem(ACTIVE_CART_ID_STORAGE_KEY, activeCartId);
+  }
+  localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
+  updateCartCount();
+  renderCartDrawer();
+}
+
+function getAllCartRecords() {
+  const registry = readCartRegistry();
+  return Object.values(registry)
+    .filter(record => record && Array.isArray(record.items))
+    .sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")));
+}
+
+function loadAllCarts() {
+  const records = getAllCartRecords();
+  activeCartId = null;
+  viewingAllCarts = true;
+
+  if (records.length === 0) {
+    const stored = localStorage.getItem(CART_STORAGE_KEY);
+    try {
+      cart = stored ? JSON.parse(stored) : [];
+    } catch (e) {
+      cart = [];
+    }
+  } else {
+    cart = records.flatMap(record =>
+      sanitizeCartItems(record.items).map(item => ({
+        ...item,
+        cartId: record.cartId
+      }))
+    );
+    applyCartRecordDiscount(records.find(record => Number(record?.discount?.percent) > 0) || null);
+  }
+
+  localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
+  updateCartCount();
+  renderCartDrawer();
+}
+
+function isCartHash(hash = window.location.hash) {
+  return /^#\/?cart(?:\/|$)/.test(hash || "");
+}
+
 function initCart() {
-  const stored = localStorage.getItem("lumina_cart");
+  const storedActiveCartId = normalizeCartId(localStorage.getItem(ACTIVE_CART_ID_STORAGE_KEY));
+  const storedActiveRecord = storedActiveCartId ? getCartRecord(storedActiveCartId) : null;
+
+  if (storedActiveRecord) {
+    activeCartId = storedActiveCartId;
+    cart = sanitizeCartItems(storedActiveRecord.items);
+    applyCartRecordDiscount(storedActiveRecord);
+    updateCartCount();
+    return;
+  }
+
+  const stored = localStorage.getItem(CART_STORAGE_KEY);
   if (stored) {
     try {
       cart = JSON.parse(stored);
+      if (storedActiveCartId && cart.length > 0) {
+        activeCartId = storedActiveCartId;
+        saveCartRecord(activeCartId, cart);
+      }
       updateCartCount();
     } catch (e) {
       cart = [];
@@ -355,7 +537,17 @@ function initCart() {
 }
 
 function saveCart(updateHash = true) {
-  localStorage.setItem("lumina_cart", JSON.stringify(cart));
+  if (!viewingAllCarts && activeCartId) {
+    if (cart.length > 0) {
+      saveCartRecord(activeCartId, cart);
+    } else {
+      removeCartRecord(activeCartId);
+      localStorage.removeItem(ACTIVE_CART_ID_STORAGE_KEY);
+      activeCartId = null;
+    }
+  }
+
+  localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
   localStorage.setItem("lumina_active_discount", JSON.stringify({
     percent: activeDiscount,
     code: activeDiscountCode
@@ -363,16 +555,10 @@ function saveCart(updateHash = true) {
   updateCartCount();
   renderCartDrawer();
   
-  if (window.location.hash.startsWith("#/cart")) {
+  if (isCartHash()) {
     renderCartPage();
-    if (updateHash && cart.length > 0) {
-      let cartId = localStorage.getItem("lumina_cart_id");
-      if (!cartId) {
-        cartId = "CRT-" + Math.random().toString(36).substring(2, 8).toUpperCase();
-        localStorage.setItem("lumina_cart_id", cartId);
-      }
-      const itemsParam = getCartItemsQueryParam();
-      const newHash = `#/cart/${cartId}${itemsParam ? '?' + itemsParam : ''}`;
+    if (updateHash && cart.length > 0 && activeCartId && !viewingAllCarts) {
+      const newHash = `#cart/${activeCartId}`;
       window.removeEventListener("hashchange", handleRouting);
       window.location.hash = newHash;
       setTimeout(() => {
@@ -453,8 +639,11 @@ function addToCart(productId, quantity = 1, silent = false, metal = null, size =
   const product = findProductByCode(productId);
   if (!product) return;
 
-  const productKey = product.id || product.productCode || productId;
   const itemSource = source || product.source || "storefront";
+  const currentCartId = normalizeCartId(activeCartId) || normalizeCartId(localStorage.getItem(ACTIVE_CART_ID_STORAGE_KEY));
+  const hadActiveCartId = Boolean(currentCartId);
+  const cartId = prepareCartForMutation();
+  const productKey = product.id || product.productCode || productId;
   const itemMetal = isServiceProduct(product) ? "Service" : (metal || (product.name.toLowerCase().includes("platinum") ? "Platinum" : "18K Yellow Gold"));
   const itemSize = isServiceProduct(product) ? "N/A" : (size || "7");
 
@@ -480,10 +669,7 @@ function addToCart(productId, quantity = 1, silent = false, metal = null, size =
   }
   saveCart();
   
-  let cartId = localStorage.getItem("lumina_cart_id");
-  if (!cartId) {
-    cartId = "CRT-" + Math.random().toString(36).substring(2, 8).toUpperCase();
-    localStorage.setItem("lumina_cart_id", cartId);
+  if (!hadActiveCartId && itemSource !== "agentforce") {
     transmitCartIdToCRM(cartId);
   }
   
@@ -501,7 +687,51 @@ function addToCart(productId, quantity = 1, silent = false, metal = null, size =
   }
 }
 
-function changeQty(productId, metal, size, change) {
+function refreshCartViewAfterRecordMutation(cartId) {
+  if (viewingAllCarts || !normalizeCartId(activeCartId)) {
+    loadAllCarts();
+  } else {
+    loadCartById(cartId || activeCartId);
+  }
+
+  if (isCartHash()) {
+    renderCartPage();
+  }
+}
+
+function changeQty(productId, metal, size, change, cartId = null) {
+  const targetCartId = normalizeCartId(cartId);
+
+  if (targetCartId && targetCartId !== normalizeCartId(activeCartId)) {
+    const record = getCartRecord(targetCartId);
+    if (!record) return;
+
+    const items = sanitizeCartItems(record.items);
+    const item = items.find(i =>
+      i.productId === productId &&
+      i.metal === metal &&
+      i.size === size
+    );
+    if (!item) return;
+
+    item.quantity += change;
+    const nextItems = item.quantity <= 0
+      ? items.filter(i => !(i.productId === productId && i.metal === metal && i.size === size))
+      : items;
+
+    if (nextItems.length > 0) {
+      const previousDiscount = { percent: activeDiscount, code: activeDiscountCode };
+      applyCartRecordDiscount(record);
+      saveCartRecord(targetCartId, nextItems);
+      activeDiscount = previousDiscount.percent;
+      activeDiscountCode = previousDiscount.code;
+    } else {
+      removeCartRecord(targetCartId);
+    }
+    refreshCartViewAfterRecordMutation(targetCartId);
+    return;
+  }
+
   const item = cart.find(i => 
     i.productId === productId && 
     i.metal === metal && 
@@ -517,7 +747,31 @@ function changeQty(productId, metal, size, change) {
   }
 }
 
-function removeFromCart(productId, metal = null, size = null) {
+function removeFromCart(productId, metal = null, size = null, cartId = null) {
+  const targetCartId = normalizeCartId(cartId);
+
+  if (targetCartId && targetCartId !== normalizeCartId(activeCartId)) {
+    const record = getCartRecord(targetCartId);
+    if (!record) return;
+
+    const items = sanitizeCartItems(record.items);
+    const nextItems = metal && size
+      ? items.filter(item => !(item.productId === productId && item.metal === metal && item.size === size))
+      : items.filter(item => item.productId !== productId);
+
+    if (nextItems.length > 0) {
+      const previousDiscount = { percent: activeDiscount, code: activeDiscountCode };
+      applyCartRecordDiscount(record);
+      saveCartRecord(targetCartId, nextItems);
+      activeDiscount = previousDiscount.percent;
+      activeDiscountCode = previousDiscount.code;
+    } else {
+      removeCartRecord(targetCartId);
+    }
+    refreshCartViewAfterRecordMutation(targetCartId);
+    return;
+  }
+
   if (metal && size) {
     cart = cart.filter(item => 
       !(item.productId === productId && item.metal === metal && item.size === size)
@@ -650,21 +904,11 @@ function handleRouting() {
     productDetailSection.style.display = "none";
     productDetailSection.innerHTML = "";
 
-    // Parse params and restore cart if applicable
-    const params = getHashParams();
-    const cartId = cartRouteMatch[1];
-    const localCartId = localStorage.getItem("lumina_cart_id");
-
-    if (params.items) {
-      if (localCartId !== cartId || cart.length === 0) {
-        restoreCartFromQuery(params.items);
-        if (cartId) localStorage.setItem("lumina_cart_id", cartId);
-      }
+    const cartId = normalizeCartId(cartRouteMatch[1]);
+    if (cartId) {
+      loadCartById(cartId);
     } else {
-      // If no items in URL, but the cartId in URL is different from local cartId (e.g. clicked email link), or local cart is empty
-      if (cartId && (localCartId !== cartId || cart.length === 0 || cartId === "CRT-DEMO123")) {
-        restoreDummyCart(cartId);
-      }
+      loadAllCarts();
     }
 
     // Show cart page section
@@ -1343,7 +1587,12 @@ function renderCartDrawer() {
     const adjustedPrice = getAdjustedPrice(product, itemMetal);
     subtotal += adjustedPrice * item.quantity;
     const initials = getInitials(product.name);
-    const itemMeta = isService ? "Services" : `${itemMetal} | Size ${itemSize}`;
+    const itemCartId = normalizeCartId(item.cartId || activeCartId);
+    const cartActionArg = itemCartId ? `, '${itemCartId}'` : "";
+    const itemMeta = [
+      isService ? "Services" : `${itemMetal} | Size ${itemSize}`,
+      viewingAllCarts && itemCartId ? `Cart ${itemCartId}` : ""
+    ].filter(Boolean).join(" | ");
 
     return `
       <div class="cart-item">
@@ -1358,13 +1607,13 @@ function renderCartDrawer() {
           <div class="cart-item-meta" style="font-size:0.75rem; color:var(--color-text-secondary); margin-top:2px;">${itemMeta}</div>
           <div class="cart-item-price" style="font-size:0.85rem; font-weight:500;">$${adjustedPrice.toLocaleString()}</div>
           <div class="cart-item-qty" style="margin-top:4px;">
-            <button class="qty-btn" onclick="changeQty('${product.id}', '${itemMetal}', '${itemSize}', -1)">-</button>
+            <button class="qty-btn" onclick="changeQty('${product.id}', '${itemMetal}', '${itemSize}', -1${cartActionArg})">-</button>
             <span class="qty-value">${item.quantity}</span>
-            <button class="qty-btn" onclick="changeQty('${product.id}', '${itemMetal}', '${itemSize}', 1)">+</button>
+            <button class="qty-btn" onclick="changeQty('${product.id}', '${itemMetal}', '${itemSize}', 1${cartActionArg})">+</button>
           </div>
         </div>
         <div>
-          <button class="cart-item-remove" onclick="removeFromCart('${product.id}', '${itemMetal}', '${itemSize}')">Remove</button>
+          <button class="cart-item-remove" onclick="removeFromCart('${product.id}', '${itemMetal}', '${itemSize}'${cartActionArg})">Remove</button>
         </div>
       </div>
     `;
@@ -1641,6 +1890,7 @@ window.LuminaStorefront = {
 
     const added = [];
     const missing = [];
+    const targetCartId = prepareCartForMutation(options.cartId || "");
     const serviceDetailsByCode = options.serviceDetailsByCode || {};
     const productDetailsByCode = options.productDetailsByCode || {};
 
@@ -1672,7 +1922,7 @@ window.LuminaStorefront = {
       showToast(`Agentforce added ${added.length} item${added.length === 1 ? "" : "s"} to Cart`, "success");
       window.setTimeout(() => {
         renderCartDrawer();
-        openCart();
+        openCart(targetCartId);
       }, 0);
     }
 
@@ -1680,7 +1930,7 @@ window.LuminaStorefront = {
       showToast(`Agentforce item not found: ${missing.join(", ")}`, "error");
     }
 
-    return { added, missing };
+    return { added, missing, cartId: targetCartId };
   },
   getProduct(productCode) {
     return findProductByCode(productCode);
@@ -1931,7 +2181,7 @@ function setupEventListeners() {
   if (btnConfirmClose && confirmationOverlay) {
     btnConfirmClose.addEventListener("click", () => {
       confirmationOverlay.classList.remove("active");
-      if (window.location.hash.startsWith("#/cart")) {
+      if (isCartHash()) {
         window.location.hash = "#";
       }
     });
@@ -1940,6 +2190,9 @@ function setupEventListeners() {
 
 // --- Checkout Simulation with Loyalty Update ---
 function processCheckout() {
+  const checkoutCartId = normalizeCartId(activeCartId);
+  const checkoutAllCarts = viewingAllCarts;
+
   // Calculate final numbers
   let subtotal = 0;
   cart.forEach(item => {
@@ -2043,7 +2296,14 @@ function processCheckout() {
   // Clear cart and states
   cart = [];
   appliedLoyaltyPoints = 0;
-  localStorage.removeItem("lumina_cart_id");
+  if (checkoutAllCarts) {
+    writeCartRegistry({});
+  } else if (checkoutCartId) {
+    removeCartRecord(checkoutCartId);
+  }
+  activeCartId = null;
+  viewingAllCarts = false;
+  localStorage.removeItem(ACTIVE_CART_ID_STORAGE_KEY);
   saveCart(true); // This will close active promo and render empty cart
 
   // Close cart drawer
@@ -2059,17 +2319,22 @@ function processCheckout() {
 
 
 // Modal Toggle Helpers
-function openCart() {
-  let cartId = localStorage.getItem("lumina_cart_id");
-  if (!cartId) {
-    cartId = "CRT-" + Math.random().toString(36).substring(2, 8).toUpperCase();
-    localStorage.setItem("lumina_cart_id", cartId);
+function openCart(cartId = "") {
+  if (cartId && typeof cartId === "object" && typeof cartId.preventDefault === "function") {
+    cartId.preventDefault();
+    cartId = "";
   }
-  const itemsParam = getCartItemsQueryParam();
-  window.location.hash = `#/cart/${cartId}${itemsParam ? '?' + itemsParam : ''}`;
+
+  if (!normalizeCartId(cartId) && cart.length === 0) {
+    window.location.hash = "#cart";
+    return;
+  }
+
+  const targetCartId = prepareCartForMutation(cartId);
+  window.location.hash = `#cart/${targetCartId}`;
 }
 function closeCart() {
-  if (window.location.hash.startsWith("#/cart")) {
+  if (isCartHash()) {
     window.location.hash = "#";
   } else {
     document.getElementById("cartOverlay")?.classList.remove("active");
@@ -2106,86 +2371,6 @@ function showToast(message, type = "info") {
       toast.remove();
     }, 400);
   }, 3500);
-}
-
-// --- Cart URL Query Serialization & Restores ---
-function getHashParams() {
-  const hash = window.location.hash;
-  const questionMarkIndex = hash.indexOf('?');
-  if (questionMarkIndex === -1) return {};
-  
-  const searchParams = new URLSearchParams(hash.substring(questionMarkIndex + 1));
-  const params = {};
-  for (const [key, value] of searchParams.entries()) {
-    params[key] = value;
-  }
-  return params;
-}
-
-function restoreCartFromQuery(itemsStr) {
-  if (!itemsStr) return;
-  try {
-    const items = itemsStr.split(',').map(item => {
-      const parts = item.split(':');
-      const productId = parts[0];
-      const quantity = parseInt(parts[1], 10) || 1;
-      const metal = parts[2] ? decodeURIComponent(parts[2]).replace(/-/g, ' ') : null;
-      const size = parts[3] ? decodeURIComponent(parts[3]).replace(/-/g, ' ') : null;
-      const source = parts[4] ? decodeURIComponent(parts[4]) : "email";
-      return { productId, quantity, metal, size, source };
-    });
-    
-    if (items.length > 0) {
-      cart = items;
-      localStorage.setItem("lumina_cart", JSON.stringify(cart));
-      updateCartCount();
-      renderCartDrawer();
-    }
-  } catch (e) {
-    console.error("Failed to restore cart from URL query parameters:", e);
-  }
-}
-
-function restoreDummyCart(cartId) {
-  console.log("[Cart Restore] Restoring dummy cart items for cart ID: " + cartId);
-  cart = [
-    {
-      productId: "prod-1",
-      quantity: 1,
-      metal: "18K Yellow Gold",
-      size: "7",
-      source: "email"
-    },
-    {
-      productId: "ENGRAVE-05",
-      quantity: 1,
-      metal: "Service",
-      size: "N/A",
-      source: "email"
-    }
-  ];
-  
-  localStorage.setItem("lumina_cart_id", cartId);
-  localStorage.setItem("lumina_cart", JSON.stringify(cart));
-  updateCartCount();
-  renderCartDrawer();
-  
-  setTimeout(() => {
-    showToast(`Cart ${cartId} retrieved from CRM session (Simulated)`, "success");
-  }, 100);
-}
-
-function getCartItemsQueryParam() {
-  if (cart.length === 0) return "";
-  const itemsStr = cart.map(item => {
-    const productId = item.productId;
-    const qty = item.quantity;
-    const metal = encodeURIComponent((item.metal || "").replace(/\s+/g, '-'));
-    const size = encodeURIComponent((item.size || "").replace(/\s+/g, '-'));
-    const source = encodeURIComponent(item.source || "storefront");
-    return `${productId}:${qty}:${metal}:${size}:${source}`;
-  }).join(",");
-  return `items=${itemsStr}`;
 }
 
 function transmitCartIdToCRM(cartId) {
@@ -2240,7 +2425,12 @@ function renderCartPage() {
     const adjustedPrice = getAdjustedPrice(product, itemMetal);
     subtotal += adjustedPrice * item.quantity;
     const initials = getInitials(product.name);
-    const itemMeta = isService ? "Services" : `${itemMetal} | Size ${itemSize}`;
+    const itemCartId = normalizeCartId(item.cartId || activeCartId);
+    const cartActionArg = itemCartId ? `, '${itemCartId}'` : "";
+    const itemMeta = [
+      isService ? "Services" : `${itemMetal} | Size ${itemSize}`,
+      viewingAllCarts && itemCartId ? `Cart ${itemCartId}` : ""
+    ].filter(Boolean).join(" | ");
 
     return `
       <div class="cart-page-item">
@@ -2257,11 +2447,11 @@ function renderCartPage() {
         </div>
         <div class="cart-page-item-actions">
           <div class="cart-page-item-qty">
-            <button class="qty-btn" onclick="changeQty('${product.id}', '${itemMetal}', '${itemSize}', -1)">-</button>
+            <button class="qty-btn" onclick="changeQty('${product.id}', '${itemMetal}', '${itemSize}', -1${cartActionArg})">-</button>
             <span class="qty-value">${item.quantity}</span>
-            <button class="qty-btn" onclick="changeQty('${product.id}', '${itemMetal}', '${itemSize}', 1)">+</button>
+            <button class="qty-btn" onclick="changeQty('${product.id}', '${itemMetal}', '${itemSize}', 1${cartActionArg})">+</button>
           </div>
-          <button class="cart-page-item-remove" onclick="removeFromCart('${product.id}', '${itemMetal}', '${itemSize}')">
+          <button class="cart-page-item-remove" onclick="removeFromCart('${product.id}', '${itemMetal}', '${itemSize}'${cartActionArg})">
             Remove
           </button>
         </div>
