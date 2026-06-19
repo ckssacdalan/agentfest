@@ -2753,9 +2753,93 @@ iframe[src*="salesforce"] {
 .cart-page-items-list {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 0;
   border-top: 1px solid var(--color-border);
   padding-top: 1.5rem;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.cart-source-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.cart-source-header {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  min-height: 48px;
+  padding: 0.85rem 0;
+  cursor: pointer;
+}
+
+.cart-source-checkbox,
+.cart-page-item-checkbox {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--color-gold);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.cart-source-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.cart-source-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-primary);
+}
+
+.cart-source-subtitle {
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+}
+
+.cart-source-voucher,
+.agentforce-voucher-code {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid rgba(197, 168, 128, 0.45);
+  border-radius: 4px;
+  background: rgba(197, 168, 128, 0.1);
+  color: var(--color-gold-hover);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.cart-source-items {
+  display: flex;
+  flex-direction: column;
+}
+
+.cart-source-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--color-border), transparent);
+  margin: 0.35rem 0 1.2rem;
 }
 
 .cart-page-item {
@@ -2763,6 +2847,20 @@ iframe[src*="salesforce"] {
   gap: 1.5rem;
   padding-bottom: 1.5rem;
   border-bottom: 1px solid var(--color-border);
+  align-items: center;
+}
+
+.cart-page-item.agentforce {
+  border-left: 3px solid rgba(197, 168, 128, 0.45);
+  padding-left: 1rem;
+}
+
+.cart-page-item.web {
+  padding-left: 1rem;
+}
+
+.cart-page-item-select {
+  display: inline-flex;
   align-items: center;
 }
 
@@ -2893,8 +2991,75 @@ iframe[src*="salesforce"] {
   padding-bottom: 1.5rem;
 }
 
+.summary-selected-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0.25rem 0 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.summary-selected-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: start;
+  font-size: 0.88rem;
+}
+
+.summary-selected-name {
+  color: var(--color-text-primary);
+  line-height: 1.35;
+}
+
+.summary-selected-empty {
+  color: var(--color-text-secondary);
+  font-size: 0.88rem;
+}
+
+.summary-item-price {
+  color: var(--color-text-primary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.summary-item-price.discounted {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 0.45rem;
+}
+
+.summary-original-price {
+  color: #b3261e;
+  font-size: 0.78rem;
+  text-decoration: line-through;
+  text-decoration-thickness: 1.5px;
+}
+
+.summary-discounted-price {
+  color: var(--color-text-primary);
+  font-weight: 700;
+}
+
 .summary-card-box {
   margin-bottom: 1.5rem;
+}
+
+.agentforce-voucher-note {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 1.5rem;
+  padding: 0.8rem 0;
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+}
+
+.btn-checkout:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .box-label {
@@ -2920,10 +3085,23 @@ iframe[src*="salesforce"] {
 }
 
 @media (max-width: 576px) {
+  .cart-source-header {
+    align-items: flex-start;
+  }
+
+  .cart-source-voucher {
+    margin-left: auto;
+  }
+
   .cart-page-item {
     flex-direction: column;
     align-items: flex-start;
     gap: 1rem;
+  }
+
+  .cart-page-item.agentforce,
+  .cart-page-item.web {
+    padding-left: 0.75rem;
   }
   
   .cart-page-item-actions {
