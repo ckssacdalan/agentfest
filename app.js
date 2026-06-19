@@ -3,17 +3,17 @@ const DEFAULT_PRODUCTS = [
   {
     id: "prod-1",
     name: "Gold Solitaire Diamond Ring",
-    price: 4500,
+    price: 3800,
     category: "Rings",
     description: "A brilliant round solitaire diamond set in an elegant 18k yellow gold band. A timeless symbol of love.",
     image: "images/Gemini_Generated_Image_qiugelqiugelqiug.png",
-    keywords: "ring, solitaire, diamond, engagement, gold ring",
+    keywords: "ring, solitaire, diamond, engagement, gold ring, gold, anniversary",
     highlighted: true
   },
   {
     id: "prod-2",
     name: "Platinum Diamond Halo Ring",
-    price: 5800,
+    price: 3500,
     category: "Rings",
     description: "A stunning round-cut diamond framed by a delicate halo of sparkling micro-pavé diamonds on a polished platinum band.",
     image: "images/Gemini_Generated_Image_qiugelqiugelqiug (1).png",
@@ -23,17 +23,17 @@ const DEFAULT_PRODUCTS = [
   {
     id: "prod-3",
     name: "Gold Three-Stone Ring",
-    price: 6400,
+    price: 3900,
     category: "Rings",
     description: "An exquisite round-cut diamond flanked by two matching side diamonds on an 18k yellow gold band, representing past, present, and future.",
     image: "images/Gemini_Generated_Image_qiugelqiugelqiug (2).png",
-    keywords: "three-stone, side stones, gold band, three stone ring",
+    keywords: "three-stone, side stones, gold band, three stone ring, gold, anniversary",
     highlighted: false
   },
   {
     id: "prod-4",
     name: "Platinum Pavé Diamond Band",
-    price: 3200,
+    price: 2400,
     category: "Rings",
     description: "A half-eternity wedding band encrusted with three rows of brilliant pavé-set diamonds in polished platinum.",
     image: "images/Gemini_Generated_Image_qiugelqiugelqiug (3).png",
@@ -43,17 +43,17 @@ const DEFAULT_PRODUCTS = [
   {
     id: "prod-5",
     name: "Gold Eternity Diamond Ring",
-    price: 4200,
+    price: 2800,
     category: "Rings",
     description: "A solid 18k yellow gold eternity band set with a continuous circle of brilliant-cut diamonds, symbolizing eternal devotion.",
     image: "images/Gemini_Generated_Image_qiugelqiugelqiug (4).png",
-    keywords: "eternity, eternity band, gold ring, full eternity",
+    keywords: "eternity, eternity band, gold ring, full eternity, gold, anniversary",
     highlighted: false
   },
   {
     id: "prod-6",
     name: "Marquise Cut Solitaire Ring",
-    price: 5500,
+    price: 1450,
     category: "Rings",
     description: "A striking marquise-cut diamond set in a classic four-prong platinum band to elongate the finger and capture light.",
     image: "images/Gemini_Generated_Image_qiugelqiugelqiug (5).png",
@@ -63,7 +63,7 @@ const DEFAULT_PRODUCTS = [
   {
     id: "prod-7",
     name: "Princess Cut Solitaire Ring",
-    price: 4900,
+    price: 1250,
     category: "Rings",
     description: "A classic princess-cut square diamond mounted on a sleek 18k yellow gold band for a modern, architectural look.",
     image: "images/Gemini_Generated_Image_qiugelqiugelqiug (6).png",
@@ -73,7 +73,7 @@ const DEFAULT_PRODUCTS = [
   {
     id: "prod-8",
     name: "Cushion Cut Halo Ring",
-    price: 6100,
+    price: 1150,
     category: "Rings",
     description: "A soft cushion-cut diamond bordered by a sparkling halo of diamonds, set on a thin platinum band.",
     image: "images/Gemini_Generated_Image_qiugelqiugelqiug (7).png",
@@ -83,7 +83,7 @@ const DEFAULT_PRODUCTS = [
   {
     id: "prod-9",
     name: "Vintage Filigree Bezel Ring",
-    price: 3800,
+    price: 1800,
     category: "Rings",
     description: "An intricate, antique-inspired gold ring featuring filigree details and an octagonal bezel-set diamond.",
     image: "images/Gemini_Generated_Image_qiugelqiugelqiug (8).png",
@@ -93,7 +93,7 @@ const DEFAULT_PRODUCTS = [
   {
     id: "prod-10",
     name: "Bezel Solitaire Platinum Ring",
-    price: 4700,
+    price: 2100,
     category: "Rings",
     description: "A contemporary round solitaire diamond encased in a protective, modern bezel setting on a polished platinum band.",
     image: "images/Gemini_Generated_Image_qiugelqiugelqiug (9).png",
@@ -171,9 +171,12 @@ function initProducts() {
   if (stored) {
     try {
       const parsed = JSON.parse(stored);
-      // Force reset if catalog doesn't contain exactly 10 products, doesn't use Gemini images, or has non-ring categories
-      const hasNonRing = Array.isArray(parsed) && parsed.some(p => p.category !== "Rings");
-      if (!Array.isArray(parsed) || parsed.length !== 10 || !parsed[0].image.includes("Gemini_Generated") || hasNonRing) {
+      // Force reset if catalog doesn't contain exactly the default product count, doesn't use Gemini images, has invalid categories, or needs price update
+      const hasInvalidCategory = Array.isArray(parsed) && parsed.some(p => p.category !== "Rings" && p.category !== "Services");
+      const firstProduct = Array.isArray(parsed) && parsed.find(p => p.id === "prod-1");
+      const needsPriceUpdate = firstProduct && firstProduct.price !== 3800;
+      
+      if (!Array.isArray(parsed) || parsed.length !== DEFAULT_PRODUCTS.length || !parsed[0].image.includes("Gemini_Generated") || hasInvalidCategory || needsPriceUpdate) {
         needsReset = true;
       } else {
         products = parsed;
@@ -381,6 +384,17 @@ function sanitizeCartItems(items) {
   return (Array.isArray(items) ? items : [])
     .filter(Boolean)
     .map(({ cartId, ...item }) => ({ ...item }));
+}
+
+function normalizeEngravingText(value) {
+  return String(value || "").trim();
+}
+
+function cartLineMatches(item, productId, metal, size, engravingText = "") {
+  return item.productId === productId &&
+    item.metal === metal &&
+    item.size === size &&
+    normalizeEngravingText(item.engravingText) === normalizeEngravingText(engravingText);
 }
 
 function getCartRecord(cartId) {
@@ -656,7 +670,7 @@ function updateLoyaltyUI() {
   }
 }
 
-function addToCart(productId, quantity = 1, silent = false, metal = null, size = null, source = null, cartIdOverride = "") {
+function addToCart(productId, quantity = 1, silent = false, metal = null, size = null, source = null, cartIdOverride = "", metadata = {}) {
   const product = findProductByCode(productId);
   if (!product) return;
 
@@ -677,26 +691,32 @@ function addToCart(productId, quantity = 1, silent = false, metal = null, size =
   const productKey = product.id || product.productCode || productId;
   const itemMetal = isServiceProduct(product) ? "Service" : (metal || (product.name.toLowerCase().includes("platinum") ? "Platinum" : "18K Yellow Gold"));
   const itemSize = isServiceProduct(product) ? "N/A" : (size || "7");
+  const engravingText = normalizeEngravingText(metadata.engravingText);
 
   const cartItem = cart.find(item => 
-    item.productId === productKey && 
-    item.metal === itemMetal && 
-    item.size === itemSize
+    cartLineMatches(item, productKey, itemMetal, itemSize, engravingText)
   );
 
   if (cartItem) {
     cartItem.quantity += quantity;
+    if (engravingText) {
+      cartItem.engravingText = engravingText;
+    }
     if (itemSource === "agentforce") {
       cartItem.source = itemSource;
     }
   } else {
-    cart.push({
+    const newItem = {
       productId: productKey,
       quantity: quantity,
       metal: itemMetal,
       size: itemSize,
       source: itemSource
-    });
+    };
+    if (engravingText) {
+      newItem.engravingText = engravingText;
+    }
+    cart.push(newItem);
   }
   saveCart();
   
@@ -732,7 +752,7 @@ function refreshCartViewAfterRecordMutation(cartId) {
   }
 }
 
-function changeQty(productId, metal, size, change, cartId = null) {
+function changeQty(productId, metal, size, change, cartId = null, engravingText = "") {
   const targetCartId = normalizeCartId(cartId);
 
   if (targetCartId && targetCartId !== normalizeCartId(activeCartId)) {
@@ -740,16 +760,12 @@ function changeQty(productId, metal, size, change, cartId = null) {
     if (!record) return;
 
     const items = sanitizeCartItems(record.items);
-    const item = items.find(i =>
-      i.productId === productId &&
-      i.metal === metal &&
-      i.size === size
-    );
+    const item = items.find(i => cartLineMatches(i, productId, metal, size, engravingText));
     if (!item) return;
 
     item.quantity += change;
     const nextItems = item.quantity <= 0
-      ? items.filter(i => !(i.productId === productId && i.metal === metal && i.size === size))
+      ? items.filter(i => !cartLineMatches(i, productId, metal, size, engravingText))
       : items;
 
     if (nextItems.length > 0) {
@@ -766,9 +782,7 @@ function changeQty(productId, metal, size, change, cartId = null) {
   }
 
   const item = cart.find(i => 
-    i.productId === productId && 
-    i.metal === metal && 
-    i.size === size
+    cartLineMatches(i, productId, metal, size, engravingText)
   );
   if (!item) return;
 
@@ -780,7 +794,7 @@ function changeQty(productId, metal, size, change, cartId = null) {
   }
 }
 
-function removeFromCart(productId, metal = null, size = null, cartId = null) {
+function removeFromCart(productId, metal = null, size = null, cartId = null, engravingText = "") {
   const targetCartId = normalizeCartId(cartId);
 
   if (targetCartId && targetCartId !== normalizeCartId(activeCartId)) {
@@ -789,7 +803,7 @@ function removeFromCart(productId, metal = null, size = null, cartId = null) {
 
     const items = sanitizeCartItems(record.items);
     const nextItems = metal && size
-      ? items.filter(item => !(item.productId === productId && item.metal === metal && item.size === size))
+      ? items.filter(item => !cartLineMatches(item, productId, metal, size, engravingText))
       : items.filter(item => item.productId !== productId);
 
     if (nextItems.length > 0) {
@@ -807,7 +821,7 @@ function removeFromCart(productId, metal = null, size = null, cartId = null) {
 
   if (metal && size) {
     cart = cart.filter(item => 
-      !(item.productId === productId && item.metal === metal && item.size === size)
+      !cartLineMatches(item, productId, metal, size, engravingText)
     );
   } else {
     cart = cart.filter(item => item.productId !== productId);
@@ -1638,9 +1652,12 @@ function renderCartDrawer() {
     subtotal += adjustedPrice * item.quantity;
     const initials = getInitials(product.name);
     const itemCartId = normalizeCartId(item.cartId || activeCartId);
-    const cartActionArg = itemCartId ? `, '${itemCartId}'` : "";
+    const engravingText = normalizeEngravingText(item.engravingText);
+    const cartActionArg = itemCartId || engravingText ? `, '${escapeJsString(itemCartId)}'` : "";
+    const engravingActionArg = engravingText ? `, '${escapeJsString(engravingText)}'` : "";
     const itemMeta = [
       isService ? "Services" : `${itemMetal} | Size ${itemSize}`,
+      engravingText ? `Engraving: "${engravingText}"` : "",
       viewingAllCarts && itemCartId ? `Cart ${itemCartId}` : ""
     ].filter(Boolean).join(" | ");
 
@@ -1654,16 +1671,16 @@ function renderCartDrawer() {
         </div>
         <div class="cart-item-info">
           <div class="cart-item-title">${product.name}</div>
-          <div class="cart-item-meta" style="font-size:0.75rem; color:var(--color-text-secondary); margin-top:2px;">${itemMeta}</div>
+          <div class="cart-item-meta" style="font-size:0.75rem; color:var(--color-text-secondary); margin-top:2px;">${escapeHtml(itemMeta)}</div>
           <div class="cart-item-price" style="font-size:0.85rem; font-weight:500;">$${adjustedPrice.toLocaleString()}</div>
           <div class="cart-item-qty" style="margin-top:4px;">
-            <button class="qty-btn" onclick="changeQty('${product.id}', '${itemMetal}', '${itemSize}', -1${cartActionArg})">-</button>
+            <button class="qty-btn" onclick="changeQty('${product.id}', '${itemMetal}', '${itemSize}', -1${cartActionArg}${engravingActionArg})">-</button>
             <span class="qty-value">${item.quantity}</span>
-            <button class="qty-btn" onclick="changeQty('${product.id}', '${itemMetal}', '${itemSize}', 1${cartActionArg})">+</button>
+            <button class="qty-btn" onclick="changeQty('${product.id}', '${itemMetal}', '${itemSize}', 1${cartActionArg}${engravingActionArg})">+</button>
           </div>
         </div>
         <div>
-          <button class="cart-item-remove" onclick="removeFromCart('${product.id}', '${itemMetal}', '${itemSize}'${cartActionArg})">Remove</button>
+          <button class="cart-item-remove" onclick="removeFromCart('${product.id}', '${itemMetal}', '${itemSize}'${cartActionArg}${engravingActionArg})">Remove</button>
         </div>
       </div>
     `;
@@ -1956,6 +1973,25 @@ window.LuminaStorefront = {
     prepareCartForMutation(targetCartId);
     const serviceDetailsByCode = options.serviceDetailsByCode || {};
     const productDetailsByCode = options.productDetailsByCode || {};
+    const engravingTextByCode = options.engravingTextByCode || {};
+
+    function getEngravingTextForProduct(productCode, product) {
+      const keys = [
+        productCode,
+        product?.id,
+        product?.productCode
+      ].map(key => String(key || "").trim().toLowerCase()).filter(Boolean);
+
+      for (const key of keys) {
+        const value = engravingTextByCode[key];
+        const text = Array.isArray(value)
+          ? normalizeEngravingText(value.shift())
+          : normalizeEngravingText(value);
+        if (text) return text;
+      }
+
+      return "";
+    }
 
     codes.forEach(productCode => {
       let product = findProductByCode(productCode);
@@ -1974,7 +2010,10 @@ window.LuminaStorefront = {
       }
 
       const addedProductCode = product.id || product.productCode;
-      addToCart(addedProductCode, 1, true, null, null, "agentforce", targetCartId);
+      const itemMetadata = isServiceProduct(product)
+        ? {}
+        : { engravingText: getEngravingTextForProduct(productCode, product) };
+      addToCart(addedProductCode, 1, true, null, null, "agentforce", targetCartId, itemMetadata);
 
       if (getCartItemsForCartId(targetCartId).some(item => item.productId === addedProductCode)) {
         added.push(addedProductCode);
@@ -2310,6 +2349,7 @@ function getCartItemKey(item, fallbackCartId = activeCartId) {
     item?.productId || "",
     item?.metal || "",
     item?.size || "",
+    normalizeEngravingText(item?.engravingText),
     source
   ].map(part => encodeURIComponent(String(part))).join("|");
 }
@@ -2443,6 +2483,7 @@ function getCartItemDisplayModel(item) {
   const itemSize = isService ? "N/A" : (item.size || "7");
   const unitPrice = getAdjustedPrice(product, itemMetal);
   const itemCartId = normalizeCartId(item.cartId || activeCartId);
+  const engravingText = normalizeEngravingText(item.engravingText);
 
   return {
     item,
@@ -2453,6 +2494,7 @@ function getCartItemDisplayModel(item) {
     unitPrice,
     lineTotal: unitPrice * item.quantity,
     itemCartId,
+    engravingText,
     source: getCartItemSource(item),
     key: getCartItemKey(item),
     initials: getInitials(product.name)
@@ -2740,11 +2782,13 @@ function renderCartPage() {
   const selectedQuantity = selectedItems.reduce((sum, item) => sum + item.quantity, 0);
 
   const renderCartItem = model => {
-    const { item, product, itemMetal, itemSize, unitPrice, itemCartId, source, key, initials, isService } = model;
+    const { item, product, itemMetal, itemSize, unitPrice, itemCartId, source, key, initials, isService, engravingText } = model;
     const isChecked = selectedCartItemKeys.has(key);
-    const cartActionArg = itemCartId ? `, '${escapeJsString(itemCartId)}'` : "";
+    const cartActionArg = itemCartId || engravingText ? `, '${escapeJsString(itemCartId)}'` : "";
+    const engravingActionArg = engravingText ? `, '${escapeJsString(engravingText)}'` : "";
     const itemMeta = [
       isService ? "Services" : `${itemMetal} | Size ${itemSize}`,
+      engravingText ? `Engraving: "${engravingText}"` : "",
       viewingAllCarts && itemCartId ? `Cart ${itemCartId}` : ""
     ].filter(Boolean).join(" | ");
     const productName = escapeHtml(product.name);
@@ -2771,11 +2815,11 @@ function renderCartPage() {
         </div>
         <div class="cart-page-item-actions">
           <div class="cart-page-item-qty">
-            <button class="qty-btn" onclick="changeQty('${escapeJsString(product.id)}', '${escapeJsString(itemMetal)}', '${escapeJsString(itemSize)}', -1${cartActionArg})">-</button>
+            <button class="qty-btn" onclick="changeQty('${escapeJsString(product.id)}', '${escapeJsString(itemMetal)}', '${escapeJsString(itemSize)}', -1${cartActionArg}${engravingActionArg})">-</button>
             <span class="qty-value">${item.quantity}</span>
-            <button class="qty-btn" onclick="changeQty('${escapeJsString(product.id)}', '${escapeJsString(itemMetal)}', '${escapeJsString(itemSize)}', 1${cartActionArg})">+</button>
+            <button class="qty-btn" onclick="changeQty('${escapeJsString(product.id)}', '${escapeJsString(itemMetal)}', '${escapeJsString(itemSize)}', 1${cartActionArg}${engravingActionArg})">+</button>
           </div>
-          <button class="cart-page-item-remove" onclick="removeFromCart('${escapeJsString(product.id)}', '${escapeJsString(itemMetal)}', '${escapeJsString(itemSize)}'${cartActionArg})">
+          <button class="cart-page-item-remove" onclick="removeFromCart('${escapeJsString(product.id)}', '${escapeJsString(itemMetal)}', '${escapeJsString(itemSize)}'${cartActionArg}${engravingActionArg})">
             Remove
           </button>
         </div>

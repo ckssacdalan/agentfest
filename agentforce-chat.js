@@ -57,6 +57,20 @@
   }
 
   /*****************************************************************
+   * Decodes URL-encoded payload fields without dropping plain text.
+   ******************************************************************/
+  function decodePayloadValue(value) {
+    const text = String(value || "");
+    if (!text) return "";
+
+    try {
+      return decodeURIComponent(text);
+    } catch (error) {
+      return text;
+    }
+  }
+
+  /*****************************************************************
    * Extracts message text from nested Agentforce payload shapes.
    ******************************************************************/
   function getNestedText(payload) {
@@ -361,6 +375,7 @@
 
       const engravingName = blockText.match(/\*\*Engraving service:\*\*\s*(.+)$/im)?.[1]?.trim();
       const engravingPrice = parsePrice(blockText.match(/\*\*Engraving price:\*\*\s*(.+)$/im)?.[1]);
+      const engravingText = getLabelValue(blockText, "Engraving text");
       const serviceCode = lineHasEngraving && codes.length > 1 ? codes[codes.length - 1] : "";
 
       if (serviceCode && (engravingName || engravingPrice !== undefined)) {
@@ -374,7 +389,8 @@
         cartItems.push({
           cartId,
           ringCode,
-          serviceCode
+          serviceCode,
+          engravingText
         });
       }
     }
@@ -470,7 +486,7 @@
       .filter(line => startsWithKeyword(line, AGENTFORCE_KEYWORDS.addToCartPayload))
       .forEach(line => {
         const fields = {};
-        line.split("|").slice(1).forEach(part => {
+        line.split(/\|(?=[A-Za-z][A-Za-z0-9_]*=)/).slice(1).forEach(part => {
           const [key, ...valueParts] = part.split("=");
           if (!key) return;
           fields[key] = valueParts.join("=");
@@ -478,15 +494,16 @@
 
         if (fields.productId) {
           items.push({
-            cartId: fields.cartId ? decodeURIComponent(fields.cartId) : "",
-            productCode: decodeURIComponent(fields.productId),
+            cartId: fields.cartId ? decodePayloadValue(fields.cartId) : "",
+            productCode: decodePayloadValue(fields.productId),
             productDetails: {
-              name: fields.name ? decodeURIComponent(fields.name) : undefined
+              name: fields.name ? decodePayloadValue(fields.name) : undefined
             },
-            serviceCode: fields.serviceProductId ? decodeURIComponent(fields.serviceProductId) : "",
+            serviceCode: fields.serviceProductId ? decodePayloadValue(fields.serviceProductId) : "",
             serviceDetails: {
-              name: fields.serviceName ? decodeURIComponent(fields.serviceName) : undefined
-            }
+              name: fields.serviceName ? decodePayloadValue(fields.serviceName) : undefined
+            },
+            engravingText: fields.engravingText ? decodePayloadValue(fields.engravingText) : ""
           });
         }
       });
@@ -642,20 +659,32 @@
           ringCodes: [],
           ringKeys: new Set(),
           serviceCodes: [],
-          servicePairs: new Set()
+          servicePairs: new Set(),
+          engravingTextByCode: {}
         });
       }
 
       return cartGroups.get(key);
     }
 
-    function addCartGroupItem(cartId, ringCode, serviceCode = "") {
+    function addCartGroupItem(cartId, ringCode, serviceCode = "", engravingText = "") {
       const group = getCartGroup(cartId);
       const normalizedRingKey = normalizeCodeKey(ringCode);
+      const cleanEngravingText = String(engravingText || "").trim();
+      const ringKey = cleanEngravingText
+        ? `${normalizedRingKey}:${cleanEngravingText}`
+        : normalizedRingKey;
 
-      if (ringCode && !group.ringKeys.has(normalizedRingKey)) {
+      if (ringCode && !group.ringKeys.has(ringKey)) {
         group.ringCodes.push(ringCode);
-        group.ringKeys.add(normalizedRingKey);
+        group.ringKeys.add(ringKey);
+      }
+
+      if (ringCode && cleanEngravingText) {
+        if (!Array.isArray(group.engravingTextByCode[normalizedRingKey])) {
+          group.engravingTextByCode[normalizedRingKey] = [];
+        }
+        group.engravingTextByCode[normalizedRingKey].push(cleanEngravingText);
       }
 
       if (serviceCode) {
@@ -669,7 +698,7 @@
 
     if (cartItems.length > 0) {
       cartItems.forEach(item => {
-        addCartGroupItem(item.cartId, item.ringCode, item.serviceCode);
+        addCartGroupItem(item.cartId, item.ringCode, item.serviceCode, item.engravingText);
       });
     } else {
       cartLines.forEach(line => {
@@ -700,7 +729,7 @@
     }
 
     payloadItems.forEach(item => {
-      addCartGroupItem(item.cartId, item.productCode, item.serviceCode);
+      addCartGroupItem(item.cartId, item.productCode, item.serviceCode, item.engravingText);
       addDetails(productDetailsByCode, item.productCode, item.productDetails);
 
       if (item.serviceCode) {
@@ -742,6 +771,7 @@
         serviceCodes: uniqueServiceCodes,
         productDetailsByCode,
         serviceDetailsByCode,
+        engravingTextByCode: group.engravingTextByCode,
         applyAgentforceDiscount: true
       });
     });
