@@ -958,8 +958,8 @@ function renderRecommendedProducts(recommendedProducts) {
 
       <div class="recommended-info">
         <span class="detail-brand-header">LUMINA AGENTFORCE</span>
-        <h1 class="detail-product-title">${recommendationLabel}</h1>
-        <div class="detail-product-price">$${totalPrice.toLocaleString()}</div>
+        <h2 class="detail-product-title">${recommendationLabel}</h2>
+       
         <p class="recommended-copy">Your Agentforce specialist selected ${recommendedProducts.length} ring${recommendedProducts.length === 1 ? "" : "s"} for this request. Review the options below or open an individual product page.</p>
 
         <hr class="detail-divider">
@@ -978,7 +978,12 @@ function renderRecommendedProducts(recommendedProducts) {
             `;
           }).join("")}
         </div>
-
+        
+        <hr class="detail-divider">
+        <div class="detail-product-price detail-total-price">
+          <span>Total</span>
+          <span>$${totalPrice.toLocaleString()}</span>
+        </div>
         <div class="recommended-actions">
           <a class="btn-primary recommended-primary-link" href="#/product/${primaryProduct.id}">View Selected Ring</a>
           <button class="btn-form submit" id="btnAddRecommendedSet">Add All to Bag</button>
