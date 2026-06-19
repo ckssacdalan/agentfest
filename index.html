@@ -46,7 +46,7 @@
         <button id="btnAdminOpen" class="btn-admin" aria-label="Open Catalog Admin Panel">
           Admin <span class="hide-mobile">Panel</span>
         </button>
-        <button id="btnCart" class="icon-btn" aria-label="View Shopping Bag">
+        <a href="#/cart" id="btnCart" class="icon-btn" aria-label="View Shopping Bag" style="text-decoration: none; position: relative; display: flex; align-items: center; justify-content: center;">
           <!-- Premium Minimalist Bag SVG -->
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
@@ -54,7 +54,7 @@
             <path d="M16 10a4 4 0 0 1-8 0"></path>
           </svg>
           <span class="cart-count" style="display: none;">0</span>
-        </button>
+        </a>
         <button id="btnMobileMenu" class="mobile-menu-btn" aria-label="Toggle Navigation Menu">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hamburger-icon">
             <line x1="3" y1="12" x2="21" y2="12" class="line-mid"></line>
@@ -137,6 +137,11 @@
 
   <!-- --- LOYALTY PROFILE SECTION (SPA) --- -->
   <section id="loyaltyProfileSection" class="loyalty-profile-section" style="display: none;">
+    <!-- Loaded dynamically via JavaScript -->
+  </section>
+
+  <!-- --- CART PAGE SECTION (SPA) --- -->
+  <section id="cartPageSection" class="cart-page-section" style="display: none;">
     <!-- Loaded dynamically via JavaScript -->
   </section>
 

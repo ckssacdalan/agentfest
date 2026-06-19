@@ -3,6 +3,10 @@
 
   const ROUTE_HIGHLIGHT_CLASS = "agent-highlighted";
   const ROUTE_HIGHLIGHT_DURATION = 5000;
+
+  /*****************************************************************
+   * Defines default listener phrases emitted by Agentforce.
+   ******************************************************************/
   const DEFAULT_AGENTFORCE_KEYWORDS = {
     showingRecommendedRings: "Showing recommended rings:",
     showingRequestedRings: "Showing requested rings:",
@@ -16,6 +20,10 @@
     ...DEFAULT_AGENTFORCE_KEYWORDS,
     ...(window.LuminaAgentforceKeywords || {})
   };
+
+  /*****************************************************************
+   * Groups phrases that indicate cart and engraving actions.
+   ******************************************************************/
   const CART_KEYWORDS = [
     AGENTFORCE_KEYWORDS.addedRingWithEngravingToCart,
     AGENTFORCE_KEYWORDS.addedRingsWithEngravingToCart,
@@ -34,6 +42,9 @@
   window.__luminaAgentforceChatRoutingInitialized = true;
   window.LuminaAgentforceKeywords = AGENTFORCE_KEYWORDS;
 
+  /*****************************************************************
+   * Safely parses a JSON string or returns an object as-is.
+   ******************************************************************/
   function parseJson(value) {
     if (!value) return null;
     if (typeof value === "object") return value;
@@ -45,6 +56,9 @@
     }
   }
 
+  /*****************************************************************
+   * Extracts message text from nested Agentforce payload shapes.
+   ******************************************************************/
   function getNestedText(payload) {
     if (!payload || typeof payload !== "object") return "";
 
@@ -83,6 +97,9 @@
     return textParts.join("\n");
   }
 
+  /*****************************************************************
+   * Reads the visible Agentforce message text from an event detail.
+   ******************************************************************/
   function getAgentforceMessageText(eventDetail) {
     const entry = eventDetail?.conversationEntry || eventDetail?.entry || eventDetail;
     const payload = parseJson(entry?.entryPayload) || parseJson(eventDetail?.entryPayload);
@@ -97,6 +114,9 @@
     ).trim();
   }
 
+  /*****************************************************************
+   * Determines whether an event was sent by Agentforce, not the user.
+   ******************************************************************/
   function isAgentforceResponse(eventDetail) {
     const entry = eventDetail?.conversationEntry || eventDetail?.entry || eventDetail;
     const sender = entry?.sender || eventDetail?.sender || {};
@@ -109,11 +129,17 @@
     return role.includes("agent") || role.includes("bot") || role.includes("copilot") || role.includes("assistant");
   }
 
+  /*****************************************************************
+   * Extracts product ids such as prod-1 from message text.
+   ******************************************************************/
   function extractProductIds(text) {
     return Array.from(text.matchAll(/\bprod-[a-z0-9_-]+\b/gi), match => match[0])
       .filter((id, index, ids) => ids.findIndex(existing => existing.toLowerCase() === id.toLowerCase()) === index);
   }
 
+  /*****************************************************************
+   * Extracts generic item codes after an action phrase.
+   ******************************************************************/
   function extractCodes(text) {
     const codeText = String(text || "").includes(":")
       ? String(text || "").split(":").slice(1).join(":")
@@ -125,26 +151,41 @@
       .filter((code, index, codes) => codes.findIndex(existing => existing.toLowerCase() === code.toLowerCase()) === index);
   }
 
+  /*****************************************************************
+   * Normalizes product or service codes for comparisons.
+   ******************************************************************/
   function normalizeCodeKey(code) {
     return String(code || "").trim().toLowerCase();
   }
 
+  /*****************************************************************
+   * Converts a currency-like value into a number.
+   ******************************************************************/
   function parsePrice(value) {
     const normalized = String(value || "").replace(/[$,]/g, "").trim();
     const parsed = Number(normalized);
     return Number.isFinite(parsed) ? parsed : undefined;
   }
 
+  /*****************************************************************
+   * Converts budget text into a dollar amount.
+   ******************************************************************/
   function parseBudgetAmount(value, hasK) {
     const parsed = Number(String(value || "").replace(/[$,]/g, ""));
     if (!Number.isFinite(parsed)) return null;
     return hasK || parsed < 100 ? parsed * 1000 : parsed;
   }
 
+  /*****************************************************************
+   * Formats a number as rounded USD currency.
+   ******************************************************************/
   function formatCurrency(value) {
     return `$${Math.round(value).toLocaleString()}`;
   }
 
+  /*****************************************************************
+   * Infers the shopper's ring preference from user text.
+   ******************************************************************/
   function extractRecommendationPreference(text) {
     const normalized = String(text || "").toLowerCase();
     const preferencePatterns = [
@@ -162,6 +203,9 @@
     return preferencePatterns.find(([pattern]) => pattern.test(normalized))?.[1] || "";
   }
 
+  /*****************************************************************
+   * Infers the shopper's budget range from user text.
+   ******************************************************************/
   function extractRecommendationBudget(text) {
     const normalized = String(text || "").toLowerCase();
     const rangeMatch = normalized.match(/\$?\s*(\d+(?:\.\d+)?)\s*(k)?\s*(?:-|to|and)\s*\$?\s*(\d+(?:\.\d+)?)\s*(k)?/i);
@@ -191,6 +235,9 @@
     return formatCurrency(amount);
   }
 
+  /*****************************************************************
+   * Stores user request context for the recommendation page label.
+   ******************************************************************/
   function captureRecommendationRequestContext(messageText) {
     const text = String(messageText || "").trim();
     if (hasLuminaListenerKeyword(text) || /\badded to your cart\b/i.test(text)) return;
@@ -224,6 +271,9 @@
     }
   }
 
+  /*****************************************************************
+   * Adds parsed product or service details by code.
+   ******************************************************************/
   function addDetails(detailsByCode, code, details) {
     const normalizedCode = String(code || "").trim();
     if (!normalizedCode) return;
@@ -234,22 +284,37 @@
     };
   }
 
+  /*****************************************************************
+   * Checks whether a line starts with a keyword.
+   ******************************************************************/
   function startsWithKeyword(line, keyword) {
     return String(line || "").trim().toLowerCase().startsWith(String(keyword || "").toLowerCase());
   }
 
+  /*****************************************************************
+   * Checks whether a line starts with any keyword in a list.
+   ******************************************************************/
   function startsWithAnyKeyword(line, keywords) {
     return keywords.some(keyword => startsWithKeyword(line, keyword));
   }
 
+  /*****************************************************************
+   * Checks whether a line describes an Agentforce cart action.
+   ******************************************************************/
   function isCartKeywordLine(line) {
     return startsWithAnyKeyword(line, CART_KEYWORDS);
   }
 
+  /*****************************************************************
+   * Checks whether a cart line includes engraving.
+   ******************************************************************/
   function isCartWithEngravingKeywordLine(line) {
     return startsWithAnyKeyword(line, CART_WITH_ENGRAVING_KEYWORDS);
   }
 
+  /*****************************************************************
+   * Extracts product and engraving details from cart message blocks.
+   ******************************************************************/
   function extractCartDetails(messageText) {
     const productDetailsByCode = {};
     const serviceDetailsByCode = {};
@@ -301,12 +366,18 @@
     };
   }
 
+  /*****************************************************************
+   * Reads a markdown-style label value from a text block.
+   ******************************************************************/
   function getLabelValue(blockText, label) {
     const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const match = blockText.match(new RegExp(`(?:\\*\\*)?${escapedLabel}(?:\\*\\*)?:\\s*(.+)$`, "im"));
     return match?.[1]?.trim() || "";
   }
 
+  /*****************************************************************
+   * Parses human-readable cart summaries when listener lines are absent.
+   ******************************************************************/
   function parseCartSummaryFallback(messageText) {
     const productDetailsByCode = {};
     const serviceDetailsByCode = {};
@@ -367,6 +438,9 @@
     };
   }
 
+  /*****************************************************************
+   * Parses structured LUMINA_ADD_TO_CART payload lines.
+   ******************************************************************/
   function parseCartPayloadLines(messageText) {
     const items = [];
 
@@ -399,6 +473,9 @@
     return items;
   }
 
+  /*****************************************************************
+   * Gets the first message line that starts with a listener prefix.
+   ******************************************************************/
   function getListenerLine(messageText, listenerPrefix) {
     const normalizedPrefix = listenerPrefix.toLowerCase();
 
@@ -407,6 +484,9 @@
       .find(line => line.trim().toLowerCase().startsWith(normalizedPrefix)) || "";
   }
 
+  /*****************************************************************
+   * Gets all message lines that start with listener prefixes.
+   ******************************************************************/
   function getListenerLines(messageText, listenerPrefixes) {
     const normalizedPrefixes = listenerPrefixes.map(prefix => prefix.toLowerCase());
 
@@ -416,6 +496,9 @@
       .filter(line => normalizedPrefixes.some(prefix => line.toLowerCase().startsWith(prefix)));
   }
 
+  /*****************************************************************
+   * Parses route instructions written as human-readable sentences.
+   ******************************************************************/
   function parseHumanRouteSentence(messageText) {
     const recommendedRingsLine = getListenerLine(messageText, AGENTFORCE_KEYWORDS.showingRecommendedRings);
     if (recommendedRingsLine) {
@@ -466,6 +549,9 @@
     return null;
   }
 
+  /*****************************************************************
+   * Parses product code lists from Agentforce response text.
+   ******************************************************************/
   function parseProductCodes(messageText) {
     const productIds = Array.from(messageText.matchAll(/^Code:\s*([a-z0-9_-]+)/gim), match => match[1])
       .filter((id, index, ids) => ids.findIndex(existing => existing.toLowerCase() === id.toLowerCase()) === index);
@@ -487,10 +573,16 @@
     return null;
   }
 
+  /*****************************************************************
+   * Chooses the best route from an Agentforce message.
+   ******************************************************************/
   function routeFromAgentMessage(messageText) {
     return parseHumanRouteSentence(messageText) || parseProductCodes(messageText);
   }
 
+  /*****************************************************************
+   * Detects whether a message contains a Lumina listener command.
+   ******************************************************************/
   function hasLuminaListenerKeyword(messageText) {
     if (/\badded to your cart\b/i.test(String(messageText || ""))) return true;
 
@@ -504,6 +596,9 @@
       );
   }
 
+  /*****************************************************************
+   * Routes Agentforce cart commands into the storefront cart API.
+   ******************************************************************/
   function routeAgentCartFromMessage(messageText) {
     const cartLines = getListenerLines(messageText, CART_KEYWORDS);
 
@@ -582,6 +677,9 @@
     return true;
   }
 
+  /*****************************************************************
+   * Updates the URL hash for product or recommendation routes.
+   ******************************************************************/
   function setHashForRoute(route) {
     if (!route || route.productIds.length === 0) return;
 
@@ -594,6 +692,9 @@
     }
   }
 
+  /*****************************************************************
+   * Highlights recommendation cards after route navigation.
+   ******************************************************************/
   function highlightRecommendationCards() {
     const recommendationMatch = window.location.hash.match(/^#\/?(recommended|recommendation)\/(.+)/);
     if (!recommendationMatch) return;
@@ -614,6 +715,9 @@
     });
   }
 
+  /*****************************************************************
+   * Handles a single Agentforce or user message event.
+   ******************************************************************/
   function handleAgentforceMessage(eventDetail) {
     const messageText = getAgentforceMessageText(eventDetail);
     if (!messageText) return;
@@ -629,6 +733,9 @@
     routeAgentCartFromMessage(messageText);
   }
 
+  /*****************************************************************
+   * Registers modern Embedded Messaging browser events.
+   ******************************************************************/
   function registerModernEmbeddedMessagingListeners() {
     [
       "onEmbeddedMessageSent",
@@ -641,6 +748,9 @@
     });
   }
 
+  /*****************************************************************
+   * Registers legacy embedded service agent message events.
+   ******************************************************************/
   function registerLegacyEmbeddedServiceListener() {
     const intervalId = window.setInterval(() => {
       if (!window.embedded_svc || typeof window.embedded_svc.addEventHandler !== "function") {
@@ -661,6 +771,9 @@
     window.setTimeout(() => window.clearInterval(intervalId), 10000);
   }
 
+  /*****************************************************************
+   * Starts Agentforce listeners and route highlight handlers.
+   ******************************************************************/
   registerModernEmbeddedMessagingListeners();
   registerLegacyEmbeddedServiceListener();
 

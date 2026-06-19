@@ -354,7 +354,7 @@ function initCart() {
   }
 }
 
-function saveCart() {
+function saveCart(updateHash = true) {
   localStorage.setItem("lumina_cart", JSON.stringify(cart));
   localStorage.setItem("lumina_active_discount", JSON.stringify({
     percent: activeDiscount,
@@ -362,6 +362,24 @@ function saveCart() {
   }));
   updateCartCount();
   renderCartDrawer();
+  
+  if (window.location.hash.startsWith("#/cart")) {
+    renderCartPage();
+    if (updateHash && cart.length > 0) {
+      let cartId = localStorage.getItem("lumina_cart_id");
+      if (!cartId) {
+        cartId = "CRT-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+        localStorage.setItem("lumina_cart_id", cartId);
+      }
+      const itemsParam = getCartItemsQueryParam();
+      const newHash = `#/cart/${cartId}${itemsParam ? '?' + itemsParam : ''}`;
+      window.removeEventListener("hashchange", handleRouting);
+      window.location.hash = newHash;
+      setTimeout(() => {
+        window.addEventListener("hashchange", handleRouting);
+      }, 50);
+    }
+  }
 }
 
 // --- Loyalty Operations ---
@@ -461,6 +479,13 @@ function addToCart(productId, quantity = 1, silent = false, metal = null, size =
     });
   }
   saveCart();
+  
+  let cartId = localStorage.getItem("lumina_cart_id");
+  if (!cartId) {
+    cartId = "CRT-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+    localStorage.setItem("lumina_cart_id", cartId);
+    transmitCartIdToCRM(cartId);
+  }
   
   if (!silent) {
     const optionLabel = isServiceProduct(product) ? "" : ` (${itemMetal}, Size ${itemSize})`;
@@ -571,8 +596,10 @@ function handleRouting() {
   const productRouteMatch = hash.match(/^#\/?product\/([^/?#]+)/);
   const recommendedRouteMatch = hash.match(/^#\/?recommended\/(.+)/);
   const legacyRecommendationRouteMatch = hash.match(/^#\/?recommendation\/(.+)/);
+  const cartRouteMatch = hash.match(/^#\/?cart(?:\/([^/?#]+))?/);
   const productDetailSection = document.getElementById("productDetailSection");
   const loyaltyProfileSection = document.getElementById("loyaltyProfileSection");
+  const cartPageSection = document.getElementById("cartPageSection");
   const heroBanner = document.getElementById("heroBanner");
   const carouselSection = document.getElementById("carousel-section");
   const highlightSection = document.getElementById("highlight-section");
@@ -592,8 +619,16 @@ function handleRouting() {
     }
   };
 
+  const hideCartPage = () => {
+    if (cartPageSection) {
+      cartPageSection.style.display = "none";
+      cartPageSection.innerHTML = "";
+    }
+  };
+
   if (hash === "#/loyalty") {
     hideHomeSections();
+    hideCartPage();
 
     // Hide product detail
     productDetailSection.style.display = "none";
@@ -607,6 +642,39 @@ function handleRouting() {
 
     // Scroll to top
     window.scrollTo({ top: 0, behavior: "smooth" });
+  } else if (cartRouteMatch) {
+    hideHomeSections();
+    hideLoyaltyProfile();
+
+    // Hide product detail
+    productDetailSection.style.display = "none";
+    productDetailSection.innerHTML = "";
+
+    // Parse params and restore cart if applicable
+    const params = getHashParams();
+    const cartId = cartRouteMatch[1];
+    const localCartId = localStorage.getItem("lumina_cart_id");
+
+    if (params.items) {
+      if (localCartId !== cartId || cart.length === 0) {
+        restoreCartFromQuery(params.items);
+        if (cartId) localStorage.setItem("lumina_cart_id", cartId);
+      }
+    } else {
+      // If no items in URL, but the cartId in URL is different from local cartId (e.g. clicked email link), or local cart is empty
+      if (cartId && (localCartId !== cartId || cart.length === 0 || cartId === "CRT-DEMO123")) {
+        restoreDummyCart(cartId);
+      }
+    }
+
+    // Show cart page section
+    if (cartPageSection) {
+      cartPageSection.style.display = "block";
+      renderCartPage();
+    }
+
+    // Scroll to top
+    window.scrollTo({ top: 0, behavior: "smooth" });
   } else if (productRouteMatch) {
     const productId = decodeURIComponent(productRouteMatch[1]);
     const product = findProductByCode(productId);
@@ -614,6 +682,7 @@ function handleRouting() {
     if (product && !isServiceProduct(product)) {
       hideHomeSections();
       hideLoyaltyProfile();
+      hideCartPage();
 
       // Show detail section
       productDetailSection.style.display = "block";
@@ -639,6 +708,7 @@ function handleRouting() {
     if (recommendedProducts.length > 0) {
       hideHomeSections();
       hideLoyaltyProfile();
+      hideCartPage();
 
       productDetailSection.style.display = "block";
       renderRecommendedProducts(recommendedProducts);
@@ -656,8 +726,9 @@ function handleRouting() {
     productDetailSection.style.display = "none";
     productDetailSection.innerHTML = "";
 
-    // Hide loyalty profile
+    // Hide loyalty profile & cart page
     hideLoyaltyProfile();
+    hideCartPage();
 
     // If there was an anchor hash, scroll to it
     if (hash && hash !== "#" && hash.startsWith("#")) {
@@ -1860,6 +1931,9 @@ function setupEventListeners() {
   if (btnConfirmClose && confirmationOverlay) {
     btnConfirmClose.addEventListener("click", () => {
       confirmationOverlay.classList.remove("active");
+      if (window.location.hash.startsWith("#/cart")) {
+        window.location.hash = "#";
+      }
     });
   }
 }
@@ -1969,7 +2043,8 @@ function processCheckout() {
   // Clear cart and states
   cart = [];
   appliedLoyaltyPoints = 0;
-  saveCart(); // This will close active promo and render empty cart
+  localStorage.removeItem("lumina_cart_id");
+  saveCart(true); // This will close active promo and render empty cart
 
   // Close cart drawer
   closeCart();
@@ -1985,10 +2060,20 @@ function processCheckout() {
 
 // Modal Toggle Helpers
 function openCart() {
-  document.getElementById("cartOverlay")?.classList.add("active");
+  let cartId = localStorage.getItem("lumina_cart_id");
+  if (!cartId) {
+    cartId = "CRT-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+    localStorage.setItem("lumina_cart_id", cartId);
+  }
+  const itemsParam = getCartItemsQueryParam();
+  window.location.hash = `#/cart/${cartId}${itemsParam ? '?' + itemsParam : ''}`;
 }
 function closeCart() {
-  document.getElementById("cartOverlay")?.classList.remove("active");
+  if (window.location.hash.startsWith("#/cart")) {
+    window.location.hash = "#";
+  } else {
+    document.getElementById("cartOverlay")?.classList.remove("active");
+  }
 }
 
 function openAdminModal() {
@@ -2022,3 +2107,357 @@ function showToast(message, type = "info") {
     }, 400);
   }, 3500);
 }
+
+// --- Cart URL Query Serialization & Restores ---
+function getHashParams() {
+  const hash = window.location.hash;
+  const questionMarkIndex = hash.indexOf('?');
+  if (questionMarkIndex === -1) return {};
+  
+  const searchParams = new URLSearchParams(hash.substring(questionMarkIndex + 1));
+  const params = {};
+  for (const [key, value] of searchParams.entries()) {
+    params[key] = value;
+  }
+  return params;
+}
+
+function restoreCartFromQuery(itemsStr) {
+  if (!itemsStr) return;
+  try {
+    const items = itemsStr.split(',').map(item => {
+      const parts = item.split(':');
+      const productId = parts[0];
+      const quantity = parseInt(parts[1], 10) || 1;
+      const metal = parts[2] ? decodeURIComponent(parts[2]).replace(/-/g, ' ') : null;
+      const size = parts[3] ? decodeURIComponent(parts[3]).replace(/-/g, ' ') : null;
+      const source = parts[4] ? decodeURIComponent(parts[4]) : "email";
+      return { productId, quantity, metal, size, source };
+    });
+    
+    if (items.length > 0) {
+      cart = items;
+      localStorage.setItem("lumina_cart", JSON.stringify(cart));
+      updateCartCount();
+      renderCartDrawer();
+    }
+  } catch (e) {
+    console.error("Failed to restore cart from URL query parameters:", e);
+  }
+}
+
+function restoreDummyCart(cartId) {
+  console.log("[Cart Restore] Restoring dummy cart items for cart ID: " + cartId);
+  cart = [
+    {
+      productId: "prod-1",
+      quantity: 1,
+      metal: "18K Yellow Gold",
+      size: "7",
+      source: "email"
+    },
+    {
+      productId: "ENGRAVE-05",
+      quantity: 1,
+      metal: "Service",
+      size: "N/A",
+      source: "email"
+    }
+  ];
+  
+  localStorage.setItem("lumina_cart_id", cartId);
+  localStorage.setItem("lumina_cart", JSON.stringify(cart));
+  updateCartCount();
+  renderCartDrawer();
+  
+  setTimeout(() => {
+    showToast(`Cart ${cartId} retrieved from CRM session (Simulated)`, "success");
+  }, 100);
+}
+
+function getCartItemsQueryParam() {
+  if (cart.length === 0) return "";
+  const itemsStr = cart.map(item => {
+    const productId = item.productId;
+    const qty = item.quantity;
+    const metal = encodeURIComponent((item.metal || "").replace(/\s+/g, '-'));
+    const size = encodeURIComponent((item.size || "").replace(/\s+/g, '-'));
+    const source = encodeURIComponent(item.source || "storefront");
+    return `${productId}:${qty}:${metal}:${size}:${source}`;
+  }).join(",");
+  return `items=${itemsStr}`;
+}
+
+function transmitCartIdToCRM(cartId) {
+  window.luminaCartId = cartId;
+  console.log("%c[CRM Sync] Transmitting Cart ID to Salesforce/CRM: " + cartId, "color: #C5A880; font-weight: bold;");
+  
+  window.dispatchEvent(new CustomEvent("onLuminaCartIdGenerated", { detail: { cartId: cartId } }));
+
+  if (window.embeddedservice_bootstrap) {
+    try {
+      if (!window.embeddedservice_bootstrap.settings) {
+        window.embeddedservice_bootstrap.settings = {};
+      }
+      if (!window.embeddedservice_bootstrap.settings.customParameters) {
+        window.embeddedservice_bootstrap.settings.customParameters = {};
+      }
+      window.embeddedservice_bootstrap.settings.customParameters.CartId = cartId;
+      console.log("[CRM Sync] Passed CartId to Salesforce Custom Parameters.");
+    } catch (err) {
+      console.warn("[CRM Sync] Could not pass CartId to Salesforce settings", err);
+    }
+  }
+}
+
+// --- Dedicated Cart Page Renderer ---
+function renderCartPage() {
+  const container = document.getElementById("cartPageSection");
+  if (!container) return;
+
+  if (cart.length === 0) {
+    container.innerHTML = `
+      <div class="breadcrumbs container">
+        <a href="#">Home</a> &gt; <span>Shopping Bag</span>
+      </div>
+      <div class="container cart-page-empty">
+        <h2>Your Shopping Bag is Empty</h2>
+        <p>Discover our exquisite collections and find the perfect piece.</p>
+        <a href="#" class="btn-primary" style="display: inline-block; margin-top: 1.5rem; text-decoration: none; padding: 1rem 2rem;">Continue Shopping</a>
+      </div>
+    `;
+    return;
+  }
+
+  let subtotal = 0;
+  const itemsHTML = cart.map(item => {
+    const product = findProductByCode(item.productId);
+    if (!product) return "";
+
+    const isService = isServiceProduct(product);
+    const itemMetal = isService ? "Service" : (item.metal || (product.name.toLowerCase().includes("platinum") ? "Platinum" : "18K Yellow Gold"));
+    const itemSize = isService ? "N/A" : (item.size || "7");
+    const adjustedPrice = getAdjustedPrice(product, itemMetal);
+    subtotal += adjustedPrice * item.quantity;
+    const initials = getInitials(product.name);
+    const itemMeta = isService ? "Services" : `${itemMetal} | Size ${itemSize}`;
+
+    return `
+      <div class="cart-page-item">
+        <div class="cart-page-item-img-container">
+          <img src="${product.image}" alt="${product.name}" class="cart-page-item-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+          <div class="card-img-fallback" style="display:none; font-size:0.8rem; padding:0.5rem; border-radius:4px; width:90px; height:90px; align-items:center; justify-content:center;">
+            <div class="fallback-initials" style="font-size:1.5rem; margin-bottom:0;">${initials}</div>
+          </div>
+        </div>
+        <div class="cart-page-item-details">
+          <div class="cart-page-item-name"><a href="#/product/${product.id}">${product.name}</a></div>
+          <div class="cart-page-item-meta">${itemMeta}</div>
+          <div class="cart-page-item-price">$${adjustedPrice.toLocaleString()}</div>
+        </div>
+        <div class="cart-page-item-actions">
+          <div class="cart-page-item-qty">
+            <button class="qty-btn" onclick="changeQty('${product.id}', '${itemMetal}', '${itemSize}', -1)">-</button>
+            <span class="qty-value">${item.quantity}</span>
+            <button class="qty-btn" onclick="changeQty('${product.id}', '${itemMetal}', '${itemSize}', 1)">+</button>
+          </div>
+          <button class="cart-page-item-remove" onclick="removeFromCart('${product.id}', '${itemMetal}', '${itemSize}')">
+            Remove
+          </button>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  let discount = 0;
+  let discountRowHTML = "";
+  if (activeDiscount > 0) {
+    discount = subtotal * (activeDiscount / 100);
+    discountRowHTML = `
+      <div class="cart-summary-row discount">
+        <span>Discount (${activeDiscountCode})</span>
+        <span class="discount-tag">-$${discount.toLocaleString()}</span>
+      </div>
+    `;
+  }
+
+  const maxDiscountCash = subtotal - discount;
+  const maxPointsNeeded = Math.ceil(maxDiscountCash / 0.10);
+  const maxPointsUserCanSpend = Math.min(userLoyaltyPoints, maxPointsNeeded);
+  
+  if (appliedLoyaltyPoints > maxPointsUserCanSpend) {
+    appliedLoyaltyPoints = maxPointsUserCanSpend;
+  }
+  if (appliedLoyaltyPoints < 0) {
+    appliedLoyaltyPoints = 0;
+  }
+
+  const loyaltyDiscount = appliedLoyaltyPoints * 0.10;
+  const finalLoyaltyDiscount = Math.min(loyaltyDiscount, maxDiscountCash);
+  
+  let loyaltyDiscountRowHTML = "";
+  if (appliedLoyaltyPoints > 0) {
+    loyaltyDiscountRowHTML = `
+      <div class="cart-summary-row discount">
+        <span>Loyalty Points Redeemed (${appliedLoyaltyPoints} pts)</span>
+        <span class="discount-tag">-$${finalLoyaltyDiscount.toLocaleString()}</span>
+      </div>
+    `;
+  }
+
+  const total = subtotal - discount - finalLoyaltyDiscount;
+  const pointsEarned = Math.max(0, Math.floor(total));
+
+  container.innerHTML = `
+    <div class="breadcrumbs container">
+      <a href="#">Home</a> &gt; <span>Shopping Bag</span>
+    </div>
+    
+    <div class="container cart-page-layout">
+      <div class="cart-page-left">
+        <h1 class="cart-page-title">Your Shopping Bag</h1>
+        <div class="cart-page-items-list">
+          ${itemsHTML}
+        </div>
+      </div>
+      
+      <div class="cart-page-right">
+        <div class="order-summary-card">
+          <h2 class="summary-card-title">Order Summary</h2>
+          
+          <div class="summary-section">
+            <div class="cart-summary-row">
+              <span>Subtotal</span>
+              <span>$${subtotal.toLocaleString()}</span>
+            </div>
+            ${discountRowHTML}
+            ${loyaltyDiscountRowHTML}
+            <div class="cart-summary-row total">
+              <span>Total</span>
+              <strong>$${total.toLocaleString()}</strong>
+            </div>
+          </div>
+
+          <div class="summary-card-box">
+            <label for="pagePromoInput" class="box-label">Promo Code</label>
+            <div class="promo-code-box">
+              <input type="text" id="pagePromoInput" class="promo-input" placeholder="e.g. WELCOME15" value="${activeDiscountCode || ''}">
+              <button id="btnPageApplyPromo" class="btn-apply-promo" onclick="applyPagePromo()">Apply</button>
+            </div>
+          </div>
+
+          <div class="summary-card-box loyalty-redeem-box">
+            <div class="loyalty-info-row">
+              <span class="loyalty-title-text">Redeem Loyalty Points</span>
+              <span id="pageLoyaltyBalanceText" class="loyalty-balance-tag">${userLoyaltyPoints.toLocaleString()} pts ($${(userLoyaltyPoints * 0.10).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}) available</span>
+            </div>
+            <div class="loyalty-input-row">
+              <input type="number" id="pageLoyaltyInput" class="loyalty-input" min="0" max="${maxPointsUserCanSpend}" placeholder="Points to spend" value="${appliedLoyaltyPoints || ''}">
+              <button id="btnPageApplyLoyalty" class="btn-apply-loyalty" onclick="applyPageLoyalty()">Apply</button>
+              <button id="btnPageUseMaxLoyalty" class="btn-use-max-loyalty" onclick="usePageMaxLoyalty()">Max</button>
+            </div>
+          </div>
+
+          <div class="loyalty-earned-banner">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="loyalty-star-icon">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+            </svg>
+            <span>You will earn <strong id="pageCartPointsEarned">${pointsEarned.toLocaleString()}</strong> loyalty points</span>
+          </div>
+
+          <button class="btn-primary btn-checkout" id="btnPageCheckout" onclick="checkoutPage()">Secure Checkout</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// Expose functions globally for onclick bindings
+window.applyPagePromo = function() {
+  const input = document.getElementById("pagePromoInput");
+  if (input && input.value) {
+    if (applyPromoCode(input.value)) {
+      input.value = "";
+    }
+  }
+};
+
+window.applyPageLoyalty = function() {
+  const loyaltyInput = document.getElementById("pageLoyaltyInput");
+  if (!loyaltyInput) return;
+  const val = parseInt(loyaltyInput.value, 10);
+  if (isNaN(val) || val < 0) {
+    showToast("Please enter a valid amount of points", "error");
+    return;
+  }
+  
+  let subtotal = 0;
+  cart.forEach(item => {
+    const product = findProductByCode(item.productId);
+    if (product) {
+      const itemMetal = isServiceProduct(product) ? "Service" : (item.metal || (product.name.toLowerCase().includes("platinum") ? "Platinum" : "18K Yellow Gold"));
+      const adjustedPrice = getAdjustedPrice(product, itemMetal);
+      subtotal += adjustedPrice * item.quantity;
+    }
+  });
+  
+  let promoDiscount = 0;
+  if (activeDiscount > 0) {
+    promoDiscount = subtotal * (activeDiscount / 100);
+  }
+  
+  const maxDiscountCash = subtotal - promoDiscount;
+  const maxPointsNeeded = Math.ceil(maxDiscountCash / 0.10);
+  const maxPointsUserCanSpend = Math.min(userLoyaltyPoints, maxPointsNeeded);
+
+  if (val > userLoyaltyPoints) {
+    showToast(`You only have ${userLoyaltyPoints} points available`, "error");
+    appliedLoyaltyPoints = maxPointsUserCanSpend;
+  } else if (val > maxPointsNeeded) {
+    showToast(`Capped points to max needed: ${maxPointsNeeded} pts`, "info");
+    appliedLoyaltyPoints = maxPointsNeeded;
+  } else {
+    appliedLoyaltyPoints = val;
+    showToast(`Applied ${appliedLoyaltyPoints} loyalty points!`, "success");
+  }
+  
+  saveCart();
+};
+
+window.usePageMaxLoyalty = function() {
+  let subtotal = 0;
+  cart.forEach(item => {
+    const product = findProductByCode(item.productId);
+    if (product) {
+      const itemMetal = isServiceProduct(product) ? "Service" : (item.metal || (product.name.toLowerCase().includes("platinum") ? "Platinum" : "18K Yellow Gold"));
+      const adjustedPrice = getAdjustedPrice(product, itemMetal);
+      subtotal += adjustedPrice * item.quantity;
+    }
+  });
+  
+  let promoDiscount = 0;
+  if (activeDiscount > 0) {
+    promoDiscount = subtotal * (activeDiscount / 100);
+  }
+  
+  const maxDiscountCash = subtotal - promoDiscount;
+  const maxPointsNeeded = Math.ceil(maxDiscountCash / 0.10);
+  const maxPointsUserCanSpend = Math.min(userLoyaltyPoints, maxPointsNeeded);
+
+  if (maxPointsUserCanSpend <= 0) {
+    showToast("No points can be applied to this order", "error");
+    appliedLoyaltyPoints = 0;
+  } else {
+    appliedLoyaltyPoints = maxPointsUserCanSpend;
+    showToast(`Applied maximum possible points: ${appliedLoyaltyPoints} pts`, "success");
+  }
+  saveCart();
+};
+
+window.checkoutPage = function() {
+  if (cart.length === 0) {
+    showToast("Your cart is empty", "error");
+    return;
+  }
+  processCheckout();
+};
