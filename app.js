@@ -656,18 +656,23 @@ function updateLoyaltyUI() {
   }
 }
 
-function addToCart(productId, quantity = 1, silent = false, metal = null, size = null, source = null) {
+function addToCart(productId, quantity = 1, silent = false, metal = null, size = null, source = null, cartIdOverride = "") {
   const product = findProductByCode(productId);
   if (!product) return;
 
   const itemSource = source || product.source || "storefront";
-  const currentCartId = normalizeCartId(activeCartId) || normalizeCartId(localStorage.getItem(ACTIVE_CART_ID_STORAGE_KEY));
+  const explicitCartId = normalizeCartId(cartIdOverride);
+  const currentCartId = explicitCartId || normalizeCartId(activeCartId) || normalizeCartId(localStorage.getItem(ACTIVE_CART_ID_STORAGE_KEY));
+  if (itemSource === "agentforce" && !explicitCartId) {
+    console.warn("[Cart] Ignored Agentforce add-to-cart without Order.Lumina_Cart_Id__c cart id.", { productId });
+    return;
+  }
+
   const shouldUseStorefrontCart = itemSource !== "agentforce" && (!currentCartId || isAgentforceCartRecord(currentCartId));
-  const shouldUseAgentforceCart = itemSource === "agentforce" && (!currentCartId || !isAgentforceCartRecord(currentCartId));
   const hadActiveCartId = Boolean(currentCartId) && !shouldUseStorefrontCart;
   const preferredCartId = shouldUseStorefrontCart
     ? getStorefrontCartId()
-    : (shouldUseAgentforceCart ? generateCartId("CART-AGENT") : "");
+    : (itemSource === "agentforce" ? explicitCartId : "");
   const cartId = prepareCartForMutation(preferredCartId);
   const productKey = product.id || product.productCode || productId;
   const itemMetal = isServiceProduct(product) ? "Service" : (metal || (product.name.toLowerCase().includes("platinum") ? "Platinum" : "18K Yellow Gold"));
@@ -1941,7 +1946,14 @@ window.LuminaStorefront = {
 
     const added = [];
     const missing = [];
-    const targetCartId = prepareCartForMutation(options.cartId || "");
+    const targetCartId = normalizeCartId(options.cartId || "");
+    if (!targetCartId) {
+      console.warn("[Cart] Agentforce add-to-cart ignored because no Order.Lumina_Cart_Id__c cart id was provided.", { productCodes: codes });
+      showToast("Agentforce cart id was not found. Please try adding the item again.", "error");
+      return { added, missing: codes, cartId: "" };
+    }
+
+    prepareCartForMutation(targetCartId);
     const serviceDetailsByCode = options.serviceDetailsByCode || {};
     const productDetailsByCode = options.productDetailsByCode || {};
 
@@ -1961,8 +1973,12 @@ window.LuminaStorefront = {
         return;
       }
 
-      addToCart(product.id || product.productCode, 1, true, null, null, "agentforce");
-      added.push(product.id || product.productCode);
+      const addedProductCode = product.id || product.productCode;
+      addToCart(addedProductCode, 1, true, null, null, "agentforce", targetCartId);
+
+      if (getCartItemsForCartId(targetCartId).some(item => item.productId === addedProductCode)) {
+        added.push(addedProductCode);
+      }
     });
 
     if (added.length > 0) {
@@ -1981,6 +1997,19 @@ window.LuminaStorefront = {
   },
   getProduct(productCode) {
     return findProductByCode(productCode);
+  },
+  getCartById(cartId) {
+    const record = getCartRecord(cartId);
+    return record
+      ? { ...record, items: sanitizeCartItems(record.items || []) }
+      : null;
+  },
+  openCartById(cartId) {
+    const normalizedCartId = normalizeCartId(cartId);
+    if (!normalizedCartId) return false;
+
+    window.location.hash = `#cart/${encodeURIComponent(normalizedCartId)}`;
+    return !!getCartRecord(normalizedCartId);
   },
   createServiceProduct(productCode, details = {}) {
     return upsertAgentforceServiceProduct(productCode, details);
@@ -2314,29 +2343,69 @@ function getSelectedCartItems() {
   return cart.filter(item => selectedCartItemKeys.has(getCartItemKey(item)));
 }
 
+function getManualPromoPercent() {
+  return activeDiscountCode === "WELCOME15" ? Number(activeDiscount) || 0 : 0;
+}
+
+function getCartItemDiscountPercent(item) {
+  if (getCartItemSource(item) === "agentforce") {
+    return AGENTFORCE_PROMO_PERCENT;
+  }
+
+  return getManualPromoPercent();
+}
+
+function getCartItemLinePricing(item) {
+  const product = findProductByCode(item.productId);
+  if (!product) {
+    return {
+      original: 0,
+      discount: 0,
+      final: 0,
+      discountPercent: 0
+    };
+  }
+
+  const itemMetal = isServiceProduct(product)
+    ? "Service"
+    : (item.metal || (product.name.toLowerCase().includes("platinum") ? "Platinum" : "18K Yellow Gold"));
+  const original = getAdjustedPrice(product, itemMetal) * item.quantity;
+  const discountPercent = getCartItemDiscountPercent(item);
+  const discount = original * (discountPercent / 100);
+
+  return {
+    original,
+    discount,
+    final: Math.max(0, original - discount),
+    discountPercent
+  };
+}
+
 function calculateCartTotals(items = []) {
   let subtotal = 0;
   let agentforceSubtotal = 0;
+  let manualPromoSubtotal = 0;
+  let agentforceDiscount = 0;
+  let manualDiscount = 0;
 
   items.forEach(item => {
     const product = findProductByCode(item.productId);
     if (!product) return;
 
-    const itemMetal = isServiceProduct(product)
-      ? "Service"
-      : (item.metal || (product.name.toLowerCase().includes("platinum") ? "Platinum" : "18K Yellow Gold"));
-    const lineTotal = getAdjustedPrice(product, itemMetal) * item.quantity;
-    subtotal += lineTotal;
+    const linePricing = getCartItemLinePricing(item);
+    subtotal += linePricing.original;
 
     if (getCartItemSource(item) === "agentforce") {
-      agentforceSubtotal += lineTotal;
+      agentforceSubtotal += linePricing.original;
+      agentforceDiscount += linePricing.discount;
+    } else {
+      manualPromoSubtotal += linePricing.original;
+      manualDiscount += linePricing.discount;
     }
   });
 
-  const agentforceDiscount = agentforceSubtotal > 0
-    ? agentforceSubtotal * (AGENTFORCE_PROMO_PERCENT / 100)
-    : 0;
-  const maxDiscountCash = Math.max(0, subtotal - agentforceDiscount);
+  const totalPromoDiscount = agentforceDiscount + manualDiscount;
+  const maxDiscountCash = Math.max(0, subtotal - totalPromoDiscount);
   const maxPointsNeeded = Math.ceil(maxDiscountCash / 0.10);
   const maxPointsUserCanSpend = Math.min(userLoyaltyPoints, maxPointsNeeded);
   const normalizedLoyaltyPoints = Math.min(
@@ -2344,12 +2413,15 @@ function calculateCartTotals(items = []) {
     maxPointsUserCanSpend
   );
   const loyaltyDiscount = Math.min(normalizedLoyaltyPoints * 0.10, maxDiscountCash);
-  const total = Math.max(0, subtotal - agentforceDiscount - loyaltyDiscount);
+  const total = Math.max(0, subtotal - totalPromoDiscount - loyaltyDiscount);
 
   return {
     subtotal,
     agentforceSubtotal,
+    manualPromoSubtotal,
     agentforceDiscount,
+    manualDiscount,
+    totalPromoDiscount,
     loyaltyPoints: normalizedLoyaltyPoints,
     loyaltyDiscount,
     total,
@@ -2457,9 +2529,13 @@ function processCheckout() {
   if (confirmSubtotal) confirmSubtotal.textContent = formatCurrency(totals.subtotal);
   
   if (confirmPromoDiscountRow && confirmPromoDiscount) {
-    if (totals.agentforceDiscount > 0) {
+    if (totals.totalPromoDiscount > 0) {
+      const promoCodes = [
+        totals.agentforceDiscount > 0 ? AGENTFORCE_PROMO_CODE : "",
+        totals.manualDiscount > 0 ? activeDiscountCode : ""
+      ].filter(Boolean).join(", ");
       confirmPromoDiscountRow.style.display = "flex";
-      confirmPromoDiscount.textContent = `-${formatCurrency(totals.agentforceDiscount)} (${AGENTFORCE_PROMO_CODE})`;
+      confirmPromoDiscount.textContent = `-${formatCurrency(totals.totalPromoDiscount)} (${promoCodes})`;
     } else {
       confirmPromoDiscountRow.style.display = "none";
     }
@@ -2498,8 +2574,11 @@ function processCheckout() {
     date: new Date().toISOString().split('T')[0],
     items: orderItems,
     subtotal: totals.subtotal,
-    discount: totals.agentforceDiscount,
-    discountCode: totals.agentforceDiscount > 0 ? AGENTFORCE_PROMO_CODE : "",
+    discount: totals.totalPromoDiscount,
+    discountCode: [
+      totals.agentforceDiscount > 0 ? AGENTFORCE_PROMO_CODE : "",
+      totals.manualDiscount > 0 ? activeDiscountCode : ""
+    ].filter(Boolean).join(", "),
     loyaltyDiscount: totals.loyaltyDiscount,
     total: totals.total,
     pointsEarned: totals.pointsEarned
@@ -2747,20 +2826,16 @@ function renderCartPage() {
       const model = getCartItemDisplayModel(item);
       if (!model) return "";
 
-      const lineOriginal = model.lineTotal;
-      const lineDiscount = model.source === "agentforce"
-        ? lineOriginal * (AGENTFORCE_PROMO_PERCENT / 100)
-        : 0;
-      const lineFinal = Math.max(0, lineOriginal - lineDiscount);
+      const linePricing = getCartItemLinePricing(item);
       const itemName = `${model.product.name}${model.item.quantity > 1 ? ` x${model.item.quantity}` : ""}`;
-      const priceHTML = lineDiscount > 0
+      const priceHTML = linePricing.discount > 0
         ? `
           <span class="summary-item-price discounted">
-            <span class="summary-original-price">${formatCurrency(lineOriginal)}</span>
-            <span class="summary-discounted-price">${formatCurrency(lineFinal)}</span>
+            <span class="summary-original-price">${formatCurrency(linePricing.original)}</span>
+            <span class="summary-discounted-price">${formatCurrency(linePricing.final)}</span>
           </span>
         `
-        : `<span class="summary-item-price">${formatCurrency(lineOriginal)}</span>`;
+        : `<span class="summary-item-price">${formatCurrency(linePricing.original)}</span>`;
 
       return `
         <div class="summary-selected-item">
@@ -2770,7 +2845,13 @@ function renderCartPage() {
       `;
     }).join("")
     : `<div class="summary-selected-empty">No selected items</div>`;
-  const totalSaved = totals.agentforceDiscount + totals.loyaltyDiscount;
+  const totalSaved = totals.totalPromoDiscount + totals.loyaltyDiscount;
+  const manualPromoAppliedHTML = activeDiscountCode === "WELCOME15" ? `
+    <div class="manual-promo-applied">
+      <span>${activeDiscountCode} applied to website cart items</span>
+      <button type="button" class="btn-remove-promo" onclick="removePagePromo()">Remove</button>
+    </div>
+  ` : "";
 
   container.innerHTML = `
     <div class="breadcrumbs container">
@@ -2811,6 +2892,15 @@ function renderCartPage() {
             </div>
           </div>
 
+          <div class="summary-card-box summary-promo-box">
+            <label for="pagePromoInput" class="box-label">Promo Code</label>
+            <div class="promo-code-box">
+              <input type="text" id="pagePromoInput" class="promo-input" placeholder="e.g. WELCOME15" value="${activeDiscountCode === "WELCOME15" ? activeDiscountCode : ""}">
+              <button type="button" id="btnPageApplyPromo" class="btn-apply-promo" onclick="applyPagePromo()">Apply</button>
+            </div>
+            ${manualPromoAppliedHTML}
+          </div>
+
           ${agentforceVoucherHTML}
 
           <div class="summary-card-box loyalty-redeem-box">
@@ -2845,7 +2935,22 @@ function renderCartPage() {
 
 // Expose functions globally for onclick bindings
 window.applyPagePromo = function() {
-  showToast(`${AGENTFORCE_PROMO_CODE} is applied automatically to Agentforce items`, "info");
+  const input = document.getElementById("pagePromoInput");
+  const code = String(input?.value || "").trim();
+
+  if (!code) {
+    showToast("Enter a promo code", "error");
+    return;
+  }
+
+  if (applyPromoCode(code)) {
+    renderCartPage();
+  }
+};
+
+window.removePagePromo = function() {
+  removePromoCode();
+  renderCartPage();
 };
 
 window.applyPageLoyalty = function() {
